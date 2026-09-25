@@ -16,6 +16,8 @@
 
   --navy:#0B2E4A;
   --navy-2:#153F61;
+  --gnavy:#153F61;   /* the Flight Instructor guide's colour: navy by day, steel blue by night */
+  --on-accent:#fff;  /* text on a solid accent or status colour - dark text in dark mode, where those colours are light */
   --accent:#0E6BA8;
   --accent-soft:#E4F0F8;
 
@@ -41,7 +43,7 @@
     --ground:#101821; --surface:#17222D; --surface-2:#1E2B37;
     --ink:#E3EAF1; --ink-2:#BDCBD7; --muted:#93A7B8;
     --line:#24343F; --line-soft:#1E2C36;
-    --navy:#0A1B29; --navy-2:#14293C;
+    --navy:#0A1B29; --navy-2:#14293C; --gnavy:#8FB3D9; --on-accent:#0B1720;
     --accent:#57ACDF; --accent-soft:#12293A;
     --k:#57ACDF; --k-soft:#122736; --k-line:#22475F;
     --r:#E08C5B; --r-soft:#2C1E16; --r-line:#5A3A25;
@@ -56,7 +58,7 @@
   --ground:#101821; --surface:#17222D; --surface-2:#1E2B37;
   --ink:#E3EAF1; --ink-2:#BDCBD7; --muted:#93A7B8;
   --line:#24343F; --line-soft:#1E2C36;
-  --navy:#0A1B29; --navy-2:#14293C;
+  --navy:#0A1B29; --navy-2:#14293C; --gnavy:#8FB3D9; --on-accent:#0B1720;
   --accent:#57ACDF; --accent-soft:#12293A;
   --k:#57ACDF; --k-soft:#122736; --k-line:#22475F;
   --r:#E08C5B; --r-soft:#2C1E16; --r-line:#5A3A25;
@@ -169,6 +171,9 @@ h1,h2,h3,h4{font-family:var(--f-display); text-wrap:balance; margin:0; line-heig
 .rail .top a.on{background:var(--accent-soft); color:var(--accent); font-weight:600}
 .rail .top svg{width:16px;height:16px;flex:none;opacity:.75}
 
+/* the Areas list closes with the same rule as the link groups, so
+   "Flight tools" below it reads as a new section */
+.rail .areas{margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line-soft)}
 /* area disclosure = the per-area dropdown */
 .ar{border-radius:9px}
 .ar>summary{
@@ -219,6 +224,8 @@ h1,h2,h3,h4{font-family:var(--f-display); text-wrap:balance; margin:0; line-heig
 .chip.r{background:var(--r-soft); color:var(--r); border-color:var(--r-line)}
 .chip.s{background:var(--s-soft); color:var(--s); border-color:var(--s-line)}
 .chip.flag{background:var(--flag-soft); color:var(--flag); border-color:var(--flag-line)}
+/* a chip carrying a phrase rather than a code may wrap on a narrow phone */
+.chip.wrap{white-space:normal; max-width:100%; line-height:1.4}
 .chip.gold{background:var(--gold-soft); color:var(--gold); border-color:var(--gold-line)}
 
 .note{
@@ -374,6 +381,10 @@ section.blk>h2 .hint{font-family:var(--f-body); font-size:12.5px; font-weight:40
   font-size:13px; font-weight:600; color:var(--ink); margin:13px 0 5px;
   font-family:var(--f-display); letter-spacing:0;
 }
+/* a subheading anywhere else - on the nav log, the deviation card, inside a
+   note. It used to render as plain body text outside a card. */
+.sh{font-family:var(--f-display); font-size:14.5px; font-weight:700; color:var(--ink); margin:18px 0 7px; letter-spacing:0}
+.note .sh{margin:16px 0 4px; padding-top:13px; border-top:1px solid var(--line)}
 
 details.more{margin-top:12px; border:1px solid var(--line); border-radius:9px; background:var(--surface)}
 details.more>summary{
@@ -423,6 +434,10 @@ figure.fig figcaption .src{display:block; font-family:var(--f-mono); font-size:1
 .acs table{width:100%; border-collapse:collapse; font-size:14.8px}
 .acs td{padding:10px 15px; vertical-align:top; border-top:1px solid var(--line-soft); line-height:1.62}
 .acs td.c{font-family:var(--f-mono); font-size:11.5px; font-weight:600; white-space:nowrap; width:1%; color:var(--muted); padding-top:10px}
+/* a long token such as "Pilot/Aircraft/enVironment/External" must break rather
+   than push the table past a small phone's edge, where .acs would clip it */
+.acs td.t{overflow-wrap:anywhere}
+@media (max-width:380px){ .acs td{padding:9px 10px} .acs td.c{font-size:10.5px} }
 .acs.K td.c{color:var(--k)} .acs.R td.c{color:var(--r)} .acs.S td.c{color:var(--s)}
 .acs tr.sub td.c{padding-left:30px; font-weight:500; opacity:.85}
 .acs tr.sub td.t{color:var(--ink-2)}
@@ -549,9 +564,9 @@ details.toc ol.tix .c{color:var(--accent); font-weight:700; width:18px; flex:non
 /* buttons */
 .btn{
   display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:8px; cursor:pointer;
-  background:var(--accent); color:#fff; border:1px solid var(--accent); font-size:14px; font-weight:600;
+  background:var(--accent); color:var(--on-accent); border:1px solid var(--accent); font-size:14px; font-weight:600;
 }
-.btn:hover{filter:brightness(1.08); text-decoration:none; color:#fff}
+.btn:hover{filter:brightness(1.08); text-decoration:none; color:var(--on-accent)}
 .btn svg{width:15px;height:15px}
 .btn.sm{padding:6px 11px; font-size:12.5px}
 .btn.ghost{background:transparent; color:var(--accent)}
@@ -639,7 +654,7 @@ details.endo .aid{
   border:1px solid var(--k-line); border-radius:5px; padding:2px 7px; flex:none;
 }
 details.endo .et{font-size:14.8px; font-weight:600; color:var(--ink); flex:1 1 240px; line-height:1.4}
-details.endo .ereg{font-size:11px; color:var(--muted); flex:none}
+details.endo .ereg{font-size:11px; color:var(--muted); flex:0 1 auto; min-width:0; overflow-wrap:anywhere}
 details.endo .ebody{padding:0 15px 14px; border-top:1px solid var(--line-soft)}
 details.endo .etext{
   font-size:15px; line-height:1.72; color:var(--ink); background:var(--surface-2);
@@ -693,7 +708,10 @@ details.endo .enote{
 
 /* study table stacks into labelled cards on a phone, so the rows stop stretching */
 @media (max-width:760px){
-  .tablewrap{overflow-x:visible; border:0; background:transparent; border-radius:0}
+  /* only the wrapper of a study table gives up its scroll box - the other
+     tables in a .tablewrap (weather categories, correlation, rating tables)
+     keep scrolling sideways rather than spilling past the screen edge */
+  .tablewrap:has(> table.studytable){overflow-x:visible; border:0; background:transparent; border-radius:0}
   table.studytable{min-width:0; display:block}
   table.studytable thead{display:none}
   table.studytable tbody,table.studytable tr,table.studytable td{display:block; width:auto}
@@ -811,7 +829,7 @@ details.endo .enote{
   background:var(--surface); border:1px solid var(--line); color:var(--ink-2);
 }
 .tab:hover{border-color:var(--accent); color:var(--accent)}
-.tab.on{background:var(--accent); border-color:var(--accent); color:#fff}
+.tab.on{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
 
 /* cross-country validator */
 .xc-in label{display:block; font-size:13.5px; font-weight:600; color:var(--ink); margin-bottom:8px}
@@ -907,7 +925,7 @@ details.xcr .xrg{font-size:11px; color:var(--muted); flex:none}
   background:transparent; border:1px solid transparent; color:var(--ink-2);
 }
 .e6-t:hover{background:var(--surface); border-color:var(--line)}
-.e6-t.on{background:var(--accent); border-color:var(--accent); color:#fff}
+.e6-t.on{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
 .e6-body{padding:18px}
 .e6-grid{display:grid; gap:11px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .e6-f{display:flex; flex-direction:column; gap:5px}
@@ -1032,7 +1050,12 @@ table.nl-cruise th.nlbar{background:var(--ink); color:var(--surface); letter-spa
 table.nl-cruise th.apt{background:var(--surface); text-align:left; padding:4px 8px; white-space:nowrap}
 table.nl-cruise th.apt span{font-size:10.5px; font-weight:700; margin-right:5px; vertical-align:middle}
 table.nl-cruise th.apt{display:table-cell; vertical-align:middle}
-table.nl-cruise th.apt input{display:inline-block; width:31%; border:1px solid var(--line); border-radius:4px; margin-right:9px; vertical-align:middle}
+table.nl-cruise th.apt input{border:1px solid var(--line); border-radius:4px; min-width:0}
+/* the two header boxes share the cell instead of overflowing it on a tablet */
+table.nl-cruise th.apt .apt-in{display:flex; align-items:center; gap:6px}
+table.nl-cruise th.apt .apt-in span{margin-right:0; flex:none}
+table.nl-cruise th.apt input.ap{flex:3 1 0}
+table.nl-cruise th.apt input.tp{flex:1 1 0; min-width:44px}
 table.nl-cruise td{background:var(--surface)}
 
 .nl-topR{display:flex; flex-direction:column; min-width:0}
@@ -1092,10 +1115,31 @@ table.nl-main td.wind>input:last-child{border-right:0}
 }
 table.nl-main td.x{text-align:center; background:var(--surface-2)}
 table.nl-main td.x button{
-  width:18px; height:18px; line-height:1; border:0; border-radius:4px; cursor:pointer;
+  display:block; margin:0 auto; padding:0;
+  width:18px; height:17px; line-height:1; border:0; border-radius:4px; cursor:pointer;
   background:transparent; color:var(--muted); font-size:14px;
 }
-table.nl-main td.x button:hover{background:var(--flag-soft); color:var(--flag)}
+table.nl-main td.x button.del:hover{background:var(--flag-soft); color:var(--flag)}
+table.nl-main td.x button.ins:hover{background:var(--accent-soft); color:var(--accent)}
+table.nl-main td.x button:disabled{opacity:.28; cursor:default; background:transparent; color:var(--muted)}
+/* the row under the last line that makes the log longer */
+table.nl-main tr.addrow td{background:var(--surface-2); height:auto; padding:7px 0}
+.nl-addin{
+  position:sticky; left:0; display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap;
+  width:max-content; max-width:calc(100vw - 48px); padding:0 9px;
+}
+.nl-addin .btn{gap:6px}
+.nl-addin .btn svg{width:14px; height:14px}
+.nl-addin .btn:disabled{opacity:.45; cursor:default; filter:none}
+.nl-count{font-family:var(--f-mono); font-size:11px; color:var(--muted)}
+.nl-undo{font-size:12.5px; color:var(--ink-2)}
+.nl-undo button{
+  border:0; background:none; padding:0 2px; font:inherit; font-weight:600; color:var(--accent);
+  text-decoration:underline; cursor:pointer;
+}
+@keyframes nlflash{from{background-color:var(--gold-soft)} to{background-color:var(--surface)}}
+table.nl-main tr.nl-new td:not(.n):not(.x){animation:nlflash 1.8s ease-out}
+@media (prefers-reduced-motion:reduce){table.nl-main tr.nl-new td{animation:none}}
 table.nl-main tr.tot td{background:var(--surface-2); height:30px}
 table.nl-main tr.tot td.cp{
   font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
@@ -1202,6 +1246,14 @@ table.devcard tr.gap th,table.devcard tr.gap td{border-top:2px solid var(--ink)}
   table.nl-main thead th:nth-child(7){width:5%!important}
   table.nl-main thead th span{font-size:5.4pt; opacity:.85}
   table.nl-main tbody td{height:16pt}
+  /* a long log runs onto a second page: never split a line across the break,
+     and repeat the column headings at the top of the new page             */
+  table.nl-main tr.leg,table.nl-main tr.tot,table.nl-main tr.wxb{break-inside:avoid}
+  table.nl-main thead{display:table-header-group}
+  table.nl-main tr.nl-new td{animation:none!important}
+  .nl-form input:focus,.nl-form textarea:focus,.nl-form select:focus{outline:none!important}
+  .nl-form input,.nl-form textarea{caret-color:transparent}
+  table.nl-main tr.tot .nl-c{white-space:nowrap}
   table.nl-main td.n,table.nl-main tr.tot td,.nl-c,table.nl-p th.mid,.nl-varbox,table.nl-cruise th{
     background:#f2f2f2!important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
   .nl-c{color:#000; font-size:6.8pt; padding:2pt 1pt}
@@ -1493,6 +1545,16 @@ table.wx-cattab th{
 }
 table.wx-cattab td{padding:11px 14px; border-top:1px solid var(--line-soft); color:var(--ink-2)}
 table.wx-cattab td.jn{font-family:var(--f-mono); font-size:12.5px; color:var(--muted); white-space:nowrap}
+@media (max-width:380px){
+  table.wx-cattab{font-size:13px; table-layout:fixed}
+  table.wx-cattab th:nth-child(1){width:24%} table.wx-cattab th:nth-child(2){width:30%}
+  table.wx-cattab th:nth-child(3){width:14%} table.wx-cattab th:nth-child(4){width:32%}
+  table.wx-cattab td.jn{font-size:11px}
+  table.wx-cattab .wx-badge{padding:3px 5px; font-size:11px}
+  table.wx-cattab th,table.wx-cattab td{padding-left:6px; padding-right:6px}
+  table.wx-cattab th{letter-spacing:.06em}
+  table.wx-cattab td.jn{white-space:normal}
+}
 .wx-badge{
   display:inline-block; font-family:var(--f-mono); font-size:12px; font-weight:700; letter-spacing:.06em;
   padding:4px 9px; border-radius:6px; border:1px solid transparent;
@@ -1604,7 +1666,7 @@ h2.sect:first-of-type{margin-top:0}
 .gcard.a-s{border-left-color:var(--s)}      .gcard.a-s .gc-go{color:var(--s)}
 .gcard.a-gold{border-left-color:var(--gold)}.gcard.a-gold .gc-go{color:var(--gold)}
 .gcard.a-flag{border-left-color:var(--flag)}.gcard.a-flag .gc-go{color:var(--flag)}
-.gcard.a-navy{border-left-color:var(--navy)}
+.gcard.a-navy{border-left-color:var(--gnavy)}
 
 .tcards{display:grid; gap:11px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
 .tcard{
@@ -1636,9 +1698,11 @@ h2.sect:first-of-type{margin-top:0}
 .gh-meta{display:flex; gap:7px; flex-wrap:wrap}
 .ghead.a-k{border-left-color:var(--k)}  .ghead.a-r{border-left-color:var(--r)}
 .ghead.a-s{border-left-color:var(--s)}  .ghead.a-gold{border-left-color:var(--gold)}
-.ghead.a-flag{border-left-color:var(--flag)} .ghead.a-navy{border-left-color:var(--navy)}
+.ghead.a-flag{border-left-color:var(--flag)} .ghead.a-navy{border-left-color:var(--gnavy)}
 .reqrow{display:flex; gap:6px; flex-wrap:wrap; margin-top:9px}
 .reqrow .chip{cursor:pointer}
+/* a long Task title wraps inside its chip instead of running off a phone screen */
+.reqrow a.chip{white-space:normal; max-width:100%; line-height:1.45; text-decoration:none}
 
 .arows{display:flex; flex-direction:column; gap:8px}
 .arow{
@@ -1670,7 +1734,7 @@ h2.sect:first-of-type{margin-top:0}
 .tsel i{display:block; font-style:normal; font-size:11.5px; color:var(--muted); margin-top:5px}
 .tsel.a-k{border-left-color:var(--k)}   .tsel.a-r{border-left-color:var(--r)}
 .tsel.a-s{border-left-color:var(--s)}   .tsel.a-gold{border-left-color:var(--gold)}
-.tsel.a-flag{border-left-color:var(--flag)} .tsel.a-navy{border-left-color:var(--navy)}
+.tsel.a-flag{border-left-color:var(--flag)} .tsel.a-navy{border-left-color:var(--gnavy)}
 
 /* guide loading */
 .loading{display:grid; place-items:center; gap:16px; padding:90px 20px; color:var(--muted)}
@@ -1738,7 +1802,7 @@ h2.sect:first-of-type{margin-top:0}
 }
 .rail .top a.g-k .gdot{background:var(--k)}     .rail .top a.g-r .gdot{background:var(--r)}
 .rail .top a.g-s .gdot{background:var(--s)}     .rail .top a.g-gold .gdot{background:var(--gold)}
-.rail .top a.g-flag .gdot{background:var(--flag)} .rail .top a.g-navy .gdot{background:var(--navy-2)}
+.rail .top a.g-flag .gdot{background:var(--flag)} .rail .top a.g-navy .gdot{background:var(--gnavy)}
 .rail .top a.back{color:var(--muted); font-size:13px}
 .rail .top a.back:hover{color:var(--accent)}
 
@@ -1802,8 +1866,7 @@ h2.sect:first-of-type{margin-top:0}
   font-family:var(--f-body); transition:background .13s, color .13s, border-color .13s;
 }
 .pill.sel:hover{border-color:var(--accent); color:var(--accent)}
-.pill.sel.on{background:var(--accent); border-color:var(--accent); color:#fff}
-[data-theme="dark"] .pill.sel.on{color:#0B1720}
+.pill.sel.on{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
 .pill.sel.static{cursor:default}
 .pill.sel.static:hover{border-color:var(--accent)}
 a.pill.sel{text-decoration:none}
@@ -1813,7 +1876,7 @@ a.pill.sel:hover{text-decoration:none}
 .pill.sel.g-s.on{background:var(--s); border-color:var(--s)}
 .pill.sel.g-gold.on{background:var(--gold); border-color:var(--gold)}
 .pill.sel.g-flag.on{background:var(--flag); border-color:var(--flag)}
-.pill.sel.g-navy.on{background:var(--navy-2); border-color:var(--navy-2); color:#fff}
+.pill.sel.g-navy.on{background:var(--gnavy); border-color:var(--gnavy); color:var(--on-accent)}
 
 /* the guide banner between result groups */
 .gbanner{
@@ -1826,7 +1889,7 @@ a.pill.sel:hover{text-decoration:none}
 .gbanner > span{margin-left:auto; font-size:12.5px; color:var(--muted)}
 .gbanner.a-k{border-left-color:var(--k)}     .gbanner.a-r{border-left-color:var(--r)}
 .gbanner.a-s{border-left-color:var(--s)}     .gbanner.a-gold{border-left-color:var(--gold)}
-.gbanner.a-flag{border-left-color:var(--flag)} .gbanner.a-navy{border-left-color:var(--navy-2)}
+.gbanner.a-flag{border-left-color:var(--flag)} .gbanner.a-navy{border-left-color:var(--gnavy)}
 
 .loadbar{display:flex; align-items:center; gap:13px; padding:26px 4px; color:var(--muted)}
 .loadbar p{margin:0; font-size:14.5px}
@@ -2177,10 +2240,9 @@ table.rt tbody tr:nth-child(odd) th{background:var(--surface)}
 .mk-els{margin-top:11px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--muted)}
 .mk-marks{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
 .mk-marks > span{font-size:13.5px; color:var(--muted); margin-right:4px}
-.btn.ok{background:var(--s); border-color:var(--s); color:#fff}
-.btn.warn{background:var(--gold); border-color:var(--gold); color:#fff}
-.btn.bad{background:var(--flag); border-color:var(--flag); color:#fff}
-[data-theme="dark"] .btn.ok,[data-theme="dark"] .btn.warn,[data-theme="dark"] .btn.bad{color:#0B1720}
+.btn.ok{background:var(--s); border-color:var(--s); color:var(--on-accent)}
+.btn.warn{background:var(--gold); border-color:var(--gold); color:var(--on-accent)}
+.btn.bad{background:var(--flag); border-color:var(--flag); color:var(--on-accent)}
 .mk-nav{display:flex; justify-content:space-between; gap:10px}
 .mk-result{
   display:flex; align-items:center; gap:22px; flex-wrap:wrap; padding:22px 24px;
@@ -2351,6 +2413,9 @@ table.rt tbody tr:nth-child(odd) th{background:var(--surface)}
   .ipc-area{break-inside:avoid}
 }
 
+/* the mock's "which test" choice on the CFI-Instrument guide */
+.mk-path{gap:8px; flex-wrap:wrap}
+.mk-path .pill.sel{font-size:14px; padding:7px 14px}
 /* A rating-table cell that offers a choice: "A or B,C or D,E" */
 table.rt td.rt-or{background:var(--gold-soft)}
 .rt-orx{font-weight:600; color:var(--gold); font-style:normal}
@@ -2593,3 +2658,50 @@ html.wc-on, body.wc-on{ overflow:hidden; touch-action:none }
 
 /* Nobody wants a full-page photograph as the first sheet out of the printer. */
 @media print{ .wc{ display:none !important } }
+
+/* PLT learning-statement rows in the missed-code tables */
+.studytable tr.pltrow td:first-child{color:var(--gold)}
+.pltm{margin-top:7px; font-size:13px; color:var(--muted); line-height:1.55}
+.pltm span{font-weight:600; color:var(--ink-2)}
+.pltm a{font-weight:600}
+
+/* visually hidden, still read aloud */
+.sr{position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0 0 0 0); white-space:nowrap; border:0}
+/* the one rail link that leaves the site - marked so it never surprises */
+.rail a.ext::after{content:"\2197"; margin-left:auto; padding-left:8px; font-size:12px; opacity:.55}
+
+/* ===========================================================================
+   The book - Fly by the Letters. One card on the portal, the About page and
+   the FOI mnemonics page.
+   =========================================================================== */
+.book{
+  display:grid; grid-template-columns:132px minmax(0,1fr); gap:22px; align-items:start;
+  background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--gold);
+  border-radius:14px; padding:20px 22px; margin:14px 0 8px; box-shadow:var(--shadow);
+}
+.book-cv{
+  display:block; border-radius:7px; overflow:hidden; line-height:0;
+  box-shadow:0 2px 4px rgba(8,18,28,.12), 0 10px 22px -8px rgba(8,18,28,.35);
+  transition:transform .25s ease, box-shadow .25s ease;
+}
+.book-cv:hover{transform:translateY(-3px) rotate(-1deg)}
+.book-cv img{display:block; width:100%; height:auto; aspect-ratio:5/8}
+.book-eb{
+  display:block; font-family:var(--f-mono); font-size:10.5px; font-weight:600;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+}
+.book h3{font-family:var(--f-display); font-size:23px; line-height:1.2; margin:5px 0 3px; color:var(--ink)}
+.book-sub{font-size:14px; font-weight:600; color:var(--ink-2); margin-bottom:10px}
+.book-tx>p{font-size:14.5px; line-height:1.6; color:var(--ink-2); margin:0 0 14px}
+.book-go{display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px}
+.book-go .btn{text-decoration:none}
+.book-fmt{font-size:12.5px; color:var(--muted)}
+.book-tx>p.book-note{font-size:12.5px; color:var(--muted); margin:14px 0 0; line-height:1.5}
+@media (max-width:560px){
+  .book{grid-template-columns:96px minmax(0,1fr); gap:15px; padding:16px 15px}
+  .book h3{font-size:20px}
+  .book-tx>p{font-size:14px}
+}
+@media (prefers-reduced-motion:reduce){ .book-cv{transition:none} .book-cv:hover{transform:none} }
+@media print{ .book{display:none!important} }

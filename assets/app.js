@@ -36,10 +36,17 @@
     payload.slug = slug;
     LOADED[slug] = payload;
   };
+  /* ?v=<content hash> from the registry, so a new build is never served from
+     yesterday's browser cache (build.py file_version) */
+  function guideVer(slug) {
+    var gs = (window.SITE && window.SITE.guides) || [];
+    for (var i = 0; i < gs.length; i++) if (gs[i].slug === slug && gs[i].v) return "?v=" + gs[i].v;
+    return "";
+  }
   function loadGuide(slug, cb) {
     if (LOADED[slug]) { useGuide(LOADED[slug]); cb(null); return; }
     var sc = document.createElement("script");
-    sc.src = "data/guide-" + slug + ".js";
+    sc.src = "data/guide-" + slug + ".js" + guideVer(slug);
     sc.onload = function () {
       if (!LOADED[slug]) { cb(new Error("guide " + slug + " loaded but registered nothing")); return; }
       useGuide(LOADED[slug]); cb(null);
@@ -55,7 +62,7 @@
   function fetchGuide(slug, cb) {
     if (LOADED[slug]) { cb(null, LOADED[slug]); return; }
     var sc = document.createElement("script");
-    sc.src = "data/guide-" + slug + ".js";
+    sc.src = "data/guide-" + slug + ".js" + guideVer(slug);
     sc.onload = function () {
       if (!LOADED[slug]) { cb(new Error("guide " + slug + " registered nothing")); return; }
       cb(null, LOADED[slug]);
@@ -516,9 +523,18 @@
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
+  /* Inline markers used by the content files: **bold**, *italic*, `code`.
+     Bold may contain an italic (**the ACS says *completed*, not entered**),
+     including one that closes right at the end (***). Italic needs a
+     non-word character before the opening star, so a literal star such as
+     "RP*" or "PA.I.A.*" is left alone. No lookbehind: older iPhone Safari
+     cannot parse it, and one bad regex literal would stop the whole app. */
+  var FMT_B = /\*\*((?:[^*]|\*(?!\*)|\*(?=\*\*(?!\*)))+?)\*\*(?!\*)/g;
+  var FMT_I = /(^|[^\w*])\*([^\s*](?:[^*]*?[^\s*])?)\*(?![\w*])/g;
   function fmt(s) {
     return esc(s)
-      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(FMT_B, "<b>$1</b>")
+      .replace(FMT_I, "$1<i>$2</i>")
       .replace(/`([^`]+)`/g, '<code class="mono">$1</code>');
   }
   function el(id) { return document.getElementById(id); }
@@ -599,6 +615,34 @@
     return (reqSpec().excluded || []).indexOf(a.roman + "." + t.letter) >= 0;
   }
   function mustWhy(code) { return (reqSpec().why || {})[code] || ""; }
+  /* CFI-Instrument only: the PTS add-on table (FAA-S-8081-9E page 18) for an
+     applicant who already holds a flight instructor certificate with an
+     airplane rating. Areas I and IV drop out and its own Tasks become
+     mandatory, so "must select" depends on which test it is. */
+  function addonSpec() { return (G && G.required && G.required.addon) || null; }
+  function addonMust(code) { var s = addonSpec(); return !!s && (s.required || []).indexOf(code) >= 0; }
+  function addonSkips(roman) { var s = addonSpec(); return !!s && (s.not_required_areas || []).indexOf(roman) >= 0; }
+  /* the words on a Task's "must select" chip - "" when it is not mandatory */
+  function mustLabel(a, t, short) {
+    var code = a.roman + "." + t.letter, ini = mandatory(a, t);
+    if (!addonSpec()) return ini ? (short ? "must select" : "Evaluator must select this task") : "";
+    var add = addonMust(code);
+    if (ini && add) return short ? "must select" : "Evaluator must select this task";
+    if (add) return short ? "must select when adding to a CFI" : "Must select when adding the rating to a CFI";
+    if (ini) return short ? "must select on an initial test" : "Must select on an initial certificate";
+    return "";
+  }
+  function reqChips(codes, why) {
+    return '<div class="reqrow" style="margin-top:10px">' + codes.map(function (c) {
+      var t = taskOf(c);
+      return '<a class="chip flag" href="' + here("t/" + c) + '" title="' + esc(why(c)) + '">' +
+        esc(c) + (t ? " · " + esc(t.title) : "") + "</a>";
+    }).join("") + "</div>";
+  }
+  function mustChip(a, t, cls, short) {
+    var l = mustLabel(a, t, short);
+    return l ? ' <span class="chip flag wrap' + (cls ? " " + cls : "") + '">' + esc(l) + "</span>" : "";
+  }
 
 
   /* Reference token -> human name + where to find it. Used by the study-table tool. */
@@ -661,7 +705,20 @@
     cloud: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18h10.5a3.5 3.5 0 0 0 .3-7 5.5 5.5 0 0 0-10.5-1A4 4 0 0 0 7 18z"/><path d="M9 21.5l1-2M13 21.5l1-2"/></svg>',
     copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
     expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m7 9 5 5 5-5"/></svg>',
-    collapse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m7 15 5-5 5 5"/></svg>'
+    collapse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m7 15 5-5 5 5"/></svg>',
+    clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="m9 13 2 2 4-4.5"/></svg>',
+    nav: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M8 4v16M14 4v16"/></svg>',
+    route: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="5.5" r="2"/><path d="M7.5 18.5H14a3.5 3.5 0 0 0 0-7H10a3.5 3.5 0 0 1 0-7h6.5"/></svg>',
+    fx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 4h-1.5A2.5 2.5 0 0 0 9 6.5V21"/><path d="M6 10h6"/><path d="m15 12 5 6M20 12l-5 6"/></svg>',
+    hold: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="7" width="16" height="10" rx="5"/><path d="M12 3v4"/><circle cx="12" cy="7" r="1.2" fill="currentColor"/></svg>',
+    cdi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 5v14"/><path d="M8 12h1M15 12h1M6 12h.5M17.5 12h.5"/></svg>',
+    apps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
+    pages: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3h9l3 3v12H8z"/><path d="M5 7v14h11"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
+    bulb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>',
+    ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+    bookopen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 7c-2-1.6-4.7-2-8-2v13c3.3 0 6 .4 8 2 2-1.6 4.7-2 8-2V5c-3.3 0-6 .4-8 2z"/><path d="M12 7v13"/></svg>'
   };
 
   /* ---------- left rail ---------- */
@@ -677,78 +734,121 @@
   function railLink(href, nav, icon, label) {
     return '<a href="' + href + '" data-nav="' + nav + '">' + icon + esc(label) + "</a>";
   }
+  /* Fly by the Letters - Simon's book (CFI Project 2026). The clean product
+     URL: the link he shared carried Amazon share/tracking parameters. */
+  var BOOK = { url: "https://www.amazon.com/dp/B0HKQ1HTTK",
+               title: "Fly by the Letters",
+               sub: "Aviation Acronyms & Memory Aids for Student Pilots",
+               blurb: "99 memory aids pilots actually use \u2014 IMSAFE, PAVE, ARROW, GRABCARDD and the " +
+                      "rest \u2014 taken apart letter by letter in plain language, each one with the " +
+                      "regulation, AIM paragraph or handbook page it comes from." };
+  /* One card for the book, used on the portal, the About page and the FOI
+     mnemonics page. No price on purpose: prices change, and the store page is
+     the one place that is always right about them.                          */
+  /* `eyebrow` is for a page with no "The book" heading of its own above the card */
+  function bookCard(lead, eyebrow) {
+    return '<aside class="book" aria-label="The book: ' + esc(BOOK.title) + '">' +
+      '<a class="book-cv" href="' + BOOK.url + '" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">' +
+      '<img src="img/book-cover-160.webp" srcset="img/book-cover-160.webp 160w, img/book-cover-320.webp 320w, ' +
+      'img/book-cover-480.webp 480w" sizes="(max-width:560px) 96px, 132px" width="160" height="256" ' +
+      'alt="" loading="lazy" decoding="async"></a>' +
+      '<div class="book-tx">' + (eyebrow ? '<span class="book-eb">The book</span>' : "") +
+      "<h3>" + esc(BOOK.title) + "</h3>" +
+      '<div class="book-sub">' + esc(BOOK.sub) + "</div>" +
+      "<p>" + (lead || esc(BOOK.blurb)) + "</p>" +
+      '<div class="book-go"><a class="btn sm" href="' + BOOK.url + '" target="_blank" rel="noopener">' +
+      I.bookopen + 'See it on Amazon<span class="sr"> (opens in a new tab)</span></a>' +
+      '<span class="book-fmt">Kindle and paperback &middot; by CFI Project 2026</span></div>' +
+      '<p class="book-note">An independent study aid, not an FAA publication. Like this site, it names ' +
+      "the FAA source for every fact so you can check it.</p></div></aside>";
+  }
+  function railExt(href, icon, label) {
+    return '<a href="' + href + '" target="_blank" rel="noopener" class="ext">' + icon + esc(label) +
+      '<span class="sr"> (opens Amazon in a new tab)</span></a>';
+  }
+  function railAct(act, icon, label) {
+    return '<a href="#" data-act="' + act + '">' + icon + esc(label) + "</a>";
+  }
+  /* The same flight tools and "more" links on the portal and inside a guide,
+     so the menu reads the same wherever you are. `u` makes the href: the
+     site-level route on the portal, the guide-scoped one inside a guide, so a
+     reader never gets dropped out of their guide by opening a tool. */
+  function railTools(u, n) {
+    return '<div class="railhd"><span>Flight tools</span></div><div class="top">' +
+      railLink(u("navlog"), n("/navlog"), I.nav, "Navigation log") +
+      railLink(u("fplan"), n("/fplan"), I.route, "ICAO flight plan") +
+      railLink(u("wx"), n("/wx"), I.cloud, "Weather decoder") +
+      railAct("e6b", I.calc, "E6B flight computer") +
+      railLink(u("formulas"), n("/formulas"), I.fx, "Formulas") +
+      railLink(u("holding"), n("/holding"), I.hold, "Holding entries") +
+      railLink(u("cdi"), n("/cdi"), I.cdi, "CDI and HSI") +
+      railLink(u("tools"), n("/tools"), I.apps, "All tools") +
+      "</div>";
+  }
+  function railMore(u, n, withPresolo) {
+    return '<div class="railhd"><span>More</span></div><div class="top">' +
+      (withPresolo ? railLink(u("presolo"), n("/presolo"), I.quiz, "Pre-solo written exam") : "") +
+      railLink(u("resources"), n("/resources"), I.link, "Official FAA resources") +
+      railLink(u("about"), n("/about"), I.user, "About") +
+      railLink(u("contact"), n("/contact"), I.mail, "Found something wrong?") +
+      railExt(BOOK.url, I.bookopen, "The book: " + BOOK.title) +
+      "</div>";
+  }
   function buildRail() {
     /* off the portal the rail is the list of guides; inside a guide it is that
        guide's own contents, with a way back out at the top                    */
     var h = "", base = G ? "/g/" + G.slug : "";
     if (!G) {
+      var su = function (r) { return "#/" + r; }, sn = function (n) { return n; };
       h += '<div class="railhd"><span>Study guides</span></div><div class="top">';
       GUIDES.forEach(function (g) {
         h += '<a class="g-' + esc(g.accent) + '" href="' + guideHref(g.slug) + '" data-nav="/g/' + g.slug + '">' +
           '<span class="gdot"></span>' + esc(g.cert) + "</a>";
       });
       h += "</div>";
-      h += '<div class="railhd"><span>Tools</span></div><div class="top">' +
+      h += '<div class="railhd"><span>Study tools</span></div><div class="top">' +
         railLink("#/search", "/search", I.search, "Advanced search") +
         railLink("#/codes", "/codes", I.grid, "Missed-code study table") +
-        railLink("#/mock", "/mock", I.badge, "Mock checkrides") +
-        railLink("#/tools", "/tools", I.calc, "Useful resources") +
-        railLink("#/wx", "/wx", I.cloud, "Weather decoder") +
-        railLink("#/fplan", "/fplan", I.sign, "ICAO flight plan") +
+        railLink("#/mock", "/mock", I.clip, "Mock checkrides") +
         railLink("#/endorsements", "/endorsements", I.sign, "Sample endorsements") +
         railLink("#/presolo", "/presolo", I.quiz, "Pre-solo written exam") +
-        railLink("#/holding", "/holding", I.grid, "Holding entries") +
-        railLink("#/cdi", "/cdi", I.badge, "CDI and HSI") +
-        railLink("#/resources", "/resources", I.link, "Official resources") +
-        railLink("#/about", "/about", I.user, "About") +
-        railLink("#/contact", "/contact", I.mail, "Found something wrong?") +
         "</div>";
+      h += railTools(su, sn) + railMore(su, sn, false);
       el("rail").innerHTML = h;
       el("brandSub").textContent = "Part 61 · Airplane";
       return;
     }
 
     var m = guideMeta(G.slug) || {};
+    var gu = function (r) { return here(r); }, gn = function (n) { return base + n; };
     el("brandSub").textContent = m.cert || G.doc;
     h += '<div class="top"><a class="back" href="#/" data-nav="/">' + I.home + "All guides</a></div>";
     h += '<div class="railhd"><span>' + esc(m.short || "This guide") + "</span></div><div class=\"top\">" +
       railLink(here(""), base, I.book, "Guide home") +
       railLink(here("search"), base + "/search", I.search, "Search this guide") +
       railLink(here("eligibility"), base + "/eligibility", I.badge, "Am I eligible?") +
-      railLink(here("mock"), base + "/mock", I.quiz, "Mock checkride");
+      railLink(here("mock"), base + "/mock", I.clip, "Mock checkride");
     /* no additional knowledge test on a class add-on - see build.py GUIDES */
     if (m.test) h += railLink(here("codes"), base + "/codes", I.grid, "Missed-code study table");
     if (reqSpec().required.length) h += railLink(here("plan"), base + "/plan", I.check, "What gets tested");
-    if (!G.is_pts && !G.teaching) h += railLink(here("addrating"), base + "/addrating", I.check, "Adding this rating");
-    if (hasAppx()) h += railLink(here("appx"), base + "/appx", I.book, "Appendices");
+    if (!G.is_pts && !G.teaching) h += railLink(here("addrating"), base + "/addrating", I.plus, "Adding this rating");
+    if (hasAppx()) h += railLink(here("appx"), base + "/appx", I.pages, "Appendices");
+    /* the IPC belongs to the Instrument guide alone, so it sits in the guide's
+       own block rather than among the tools every guide shares */
+    if (hasIpc()) h += railLink(here("ipc"), base + "/ipc", I.clock, "Instrument proficiency check");
     if (ENDO.length) h += railLink(here("endorsements"), base + "/endorsements", I.sign, "Endorsements");
     /* The FOI mnemonics are for someone who has to TEACH the fundamentals of
        instructing, so they sit in the guide block on the two teaching guides
        only. The route still works everywhere, so a link from anywhere lands
        on a real page. */
     if (G.teaching && SC("mnemonics")) {
-      h += railLink(here("mnemonics"), base + "/mnemonics", I.quiz, "FOI mnemonics");
+      h += railLink(here("mnemonics"), base + "/mnemonics", I.bulb, "FOI mnemonics");
     }
     h += "</div>";
-    /* These pages are the same everywhere, but keep them INSIDE the guide -
-       linking to the site-level route would drop the reader out of the guide
-       and reset the rail, losing their place. */
-    h += '<div class="railhd"><span>Everywhere</span></div><div class="top">' +
-      railLink(here("tools"), base + "/tools", I.calc, "Useful resources") +
-      railLink(here("wx"), base + "/wx", I.cloud, "Weather decoder") +
-      railLink(here("fplan"), base + "/fplan", I.sign, "ICAO flight plan") +
-      (SC("presolo") ? railLink(here("presolo"), base + "/presolo", I.quiz, "Pre-solo written exam") : "") +
-      railLink(here("holding"), base + "/holding", I.grid, "Holding entries") +
-      railLink(here("cdi"), base + "/cdi", I.badge, "CDI and HSI") +
-      (hasIpc() ? railLink(here("ipc"), base + "/ipc", I.check, "Instrument proficiency check") : "") +
-      railLink(here("resources"), base + "/resources", I.link, "Official resources") +
-      railLink(here("about"), base + "/about", I.user, "About") +
-      railLink(here("contact"), base + "/contact", I.mail, "Found something wrong?") +
-      "</div>";
-
     h += '<div class="railhd"><span>Areas of Operation</span>' +
       '<span class="exp"><button type="button" id="expAll" title="Expand all areas">' + I.expand + '</button>' +
       '<button type="button" id="colAll" title="Collapse all areas">' + I.collapse + "</button></span></div>";
+    h += '<div class="areas">';
     ACS.forEach(function (a) {
       h += '<details class="ar" id="ar-' + a.roman + '"><summary>' +
         '<span class="rn">' + a.roman + '</span><span class="rt">' + esc(a.title) + '</span>' + I.chev +
@@ -761,6 +861,8 @@
             '<span class="c">' + t.letter + '</span><span>' + esc(t.title) + '</span></a></li>';
         }).join("") + "</ul></details>";
     });
+    h += "</div>";
+    h += railTools(gu, gn) + railMore(gu, gn, !!SC("presolo"));
     el("rail").innerHTML = h;
     if (el("expAll")) el("expAll").addEventListener("click", function () { setAll(true); });
     if (el("colAll")) el("colAll").addEventListener("click", function () { setAll(false); });
@@ -824,7 +926,7 @@
       var cls = (sub ? "sub " : "") + (on ? "hit " : "") +
                 (e.archived ? "arch " : "") + (e.na ? "na " : "");
       /* An element the FAA wrote for another rating, or retired outright, is
-         shown exactly as printed and labelled. Hiding it would leave a hole in
+         shown exactly as printed and labeled. Hiding it would leave a hole in
          the numbering that looks like a bug in this site. */
       var tail = e.archived
         ? '<span class="elnote">The FAA retired this element. Nothing to study.</span>'
@@ -864,7 +966,7 @@
   }
 
   /* A card may answer several elements at once - "S3, S4, S5" - so each gets
-     its own chip, coloured by whether it is a Knowledge, Risk or Skills code
+     its own chip, colored by whether it is a Knowledge, Risk or Skills code
      and linked to that row in the table above. */
   function codeChips(code) {
     if (!code) return "";
@@ -919,7 +1021,8 @@
     function add(code, where, text, anchor, kind) {
       if (!text) return;
       /* strip the inline markers so snippets read as sentences, not source */
-      var clean = String(text).replace(/\*\*/g, "").replace(/`/g, "").replace(/\s+/g, " ").trim();
+      var clean = String(text).replace(/\*\*/g, "").replace(FMT_I, "$1$2")
+        .replace(/`/g, "").replace(/\s+/g, " ").trim();
       if (!clean) return;
       out.push({ g: g.slug, c: code, w: where, t: clean, a: anchor || "",
                  k: kind, l: clean.toLowerCase() });
@@ -1094,7 +1197,7 @@
     h += '<div id="sres"></div>';
     return h;
   }
-  /* an example code the reader will actually recognise in this context */
+  /* an example code the reader will actually recognize in this context */
   function sampleCode() {
     if (G) { var p = codePrefixes()[0] || "PA"; var f = flat()[0];
              return f ? p + "." + f.code + ".K1" : p + ".I.A.K1"; }
@@ -1441,7 +1544,7 @@
         if (!tw) return null;
         var cg = tm / tw;
         var out = [["Total weight", r1(tw) + " lb"], ["Total moment", r0(tm).toLocaleString() + " lb-in"],
-                   ["Centre of gravity", r1(cg * 10) / 10 + " in aft of datum"]];
+                   ["Center of gravity", r1(cg * 10) / 10 + " in aft of datum"]];
         var mx = num("wb_max"), fw = num("wb_fwd"), af = num("wb_aft");
         if (mx !== null) out.push(["Against max gross", tw <= mx ? "Within limits (" + r1(mx - tw) + " lb spare)" : "OVER by " + r1(tw - mx) + " lb"]);
         if (fw !== null && af !== null) out.push(["Against the CG envelope",
@@ -1559,23 +1662,23 @@
     { id: "conv", t: "Conversions", f: function () {
         return e6row([["c_val", "Value", "", 100]]) +
           '<div class="e6-sel"><label for="c_kind">Convert</label><select id="c_kind">' +
-          ["Nautical miles", "Statute miles", "Kilometres", "Gallons (avgas)", "Pounds (avgas)", "Litres",
-           "Degrees Celsius", "Degrees Fahrenheit", "Feet", "Metres", "Knots", "Miles per hour"]
+          ["Nautical miles", "Statute miles", "Kilometers", "Gallons (avgas)", "Pounds (avgas)", "Liters",
+           "Degrees Celsius", "Degrees Fahrenheit", "Feet", "Meters", "Knots", "Miles per hour"]
             .map(function (k) { return '<option>' + k + "</option>"; }).join("") + "</select></div>";
       }, calc: function () {
         var v = num("c_val"); if (v === null) return null;
         var k = (el("c_kind") || {}).value;
         var M = {
-          "Nautical miles": [["Statute miles", v * 1.15078], ["Kilometres", v * 1.852]],
-          "Statute miles": [["Nautical miles", v * 0.868976], ["Kilometres", v * 1.60934]],
-          "Kilometres": [["Nautical miles", v * 0.539957], ["Statute miles", v * 0.621371]],
-          "Gallons (avgas)": [["Pounds at 6 lb/gal", v * 6], ["Litres", v * 3.78541]],
-          "Pounds (avgas)": [["Gallons at 6 lb/gal", v / 6], ["Litres", v / 6 * 3.78541]],
-          "Litres": [["Gallons", v * 0.264172], ["Pounds at 6 lb/gal", v * 0.264172 * 6]],
+          "Nautical miles": [["Statute miles", v * 1.15078], ["Kilometers", v * 1.852]],
+          "Statute miles": [["Nautical miles", v * 0.868976], ["Kilometers", v * 1.60934]],
+          "Kilometers": [["Nautical miles", v * 0.539957], ["Statute miles", v * 0.621371]],
+          "Gallons (avgas)": [["Pounds at 6 lb/gal", v * 6], ["Liters", v * 3.78541]],
+          "Pounds (avgas)": [["Gallons at 6 lb/gal", v / 6], ["Liters", v / 6 * 3.78541]],
+          "Liters": [["Gallons", v * 0.264172], ["Pounds at 6 lb/gal", v * 0.264172 * 6]],
           "Degrees Celsius": [["Degrees Fahrenheit", v * 9 / 5 + 32]],
           "Degrees Fahrenheit": [["Degrees Celsius", (v - 32) * 5 / 9]],
-          "Feet": [["Metres", v * 0.3048], ["Nautical miles", v / 6076.12]],
-          "Metres": [["Feet", v / 0.3048]],
+          "Feet": [["Meters", v * 0.3048], ["Nautical miles", v / 6076.12]],
+          "Meters": [["Feet", v / 0.3048]],
           "Knots": [["Miles per hour", v * 1.15078], ["Km/h", v * 1.852]],
           "Miles per hour": [["Knots", v * 0.868976], ["Km/h", v * 1.60934]]
         };
@@ -1694,6 +1797,19 @@ try {
 if (!NAV.legs || !NAV.legs.length) NAV.legs = [{}, {}, {}, {}, {}, {}];
 NAV.adv = NAV.adv || {}; NAV.freq = NAV.freq || {}; NAV.fuel = NAV.fuel || {};
 function saveNav() { try { localStorage.setItem("cfi-navlog-2", JSON.stringify(NAV)); } catch (e) { } }
+
+/* ---- lines -----------------------------------------------------------------
+   The log opens with six lines, like the paper form. A longer route simply
+   gets more: "Add a line" under the last one, or "+" at the end of a line to
+   slip a new one in right below it. A line that is deleted with something
+   written in it can be brought back once with Undo.                          */
+var NL_MAX = 60;          /* sanity limit - about three printed pages        */
+var NL_FLASH = null;      /* index of the line just added, to show and focus */
+var NL_UNDO = null;       /* { i: index, leg: the deleted line }             */
+function legHasData(l) {
+  for (var k in l) if (Object.prototype.hasOwnProperty.call(l, k) && String(l[k] == null ? "" : l[k]).trim()) return true;
+  return false;
+}
 
 function nnum(v) { var n = parseFloat(v); return isNaN(n) ? null : n; }
 function pad3(d) { d = ((Math.round(d) % 360) + 360) % 360; return (d < 100 ? (d < 10 ? "00" : "0") : "") + d; }
@@ -1872,8 +1988,8 @@ function navlogHtml() {
     '<label class="nl-notes"><b>Notes:</b><textarea data-nl="notes" rows="3" spellcheck="false">' +
     esc(h.notes || "") + "</textarea></label>" +
     '<div class="nl-cruisewrap"><table class="nl-cruise"><tr><th class="nlbar" colspan="7">Cruise</th>' +
-    '<th class="apt" colspan="3"><span>Airport:</span>' + nlIn("airport", h.airport) +
-    '<span>TPA:</span>' + nlIn("tpa", h.tpa) + "</th></tr>" +
+    '<th class="apt" colspan="3"><div class="apt-in"><span>Airport:</span>' + nlIn("airport", h.airport, "ap") +
+    '<span>TPA:</span>' + nlIn("tpa", h.tpa, "tp") + "</div></th></tr>" +
     "<tr>" + NAV_CRUISE.map(function (f) { return "<th>" + esc(f[1]) + "</th>"; }).join("") + "</tr>" +
     "<tr>" + NAV_CRUISE.map(function (f) { return "<td>" + nlIn(f[0], h[f[0]]) + "</td>"; }).join("") + "</tr>" +
     "</table></div></div>";
@@ -1903,9 +2019,10 @@ function navlogHtml() {
     "<th>GPH <span>Fuel &middot; Rem</span></th>" +
     '<th class="x no-print"></th></tr></thead><tbody>';
 
+  var nL = NAV.legs.length, full = nL >= NL_MAX;
   NAV.legs.forEach(function (l, i) {
     var o = c.rows[i] || {};
-    x += "<tr>" +
+    x += '<tr class="leg' + (i === NL_FLASH ? " nl-new" : "") + '">' +
       '<td class="n">' + (i + 1) + "</td>" +
       '<td class="cp">' + nlLeg(i, "cp", l.cp) + "</td>" +
       '<td class="two">' + nlLeg(i, "vor", l.vor, "", "ident") + nlLeg(i, "freq", l.freq, "", "freq") + "</td>" +
@@ -1925,9 +2042,22 @@ function navlogHtml() {
       '<td class="two">' + nlCalc(o.ete) + nlCalc(o.eta) + "</td>" +
       '<td class="two">' + nlLeg(i, "ate", l.ate) + nlLeg(i, "ata", l.ata) + "</td>" +
       '<td class="two">' + nlCalc(o.fuel) + nlCalc(o.frem) + "</td>" +
-      '<td class="x no-print"><button data-del="' + i + '" title="Delete this line" aria-label="Delete line ' + (i + 1) + '">&times;</button></td>' +
+      '<td class="x no-print">' +
+        '<button type="button" class="ins" data-ins="' + i + '" title="Insert a line below line ' + (i + 1) + '"' +
+          ' aria-label="Insert a line below line ' + (i + 1) + '"' + (full ? " disabled" : "") + ">+</button>" +
+        '<button type="button" class="del" data-del="' + i + '" title="Delete line ' + (i + 1) + '"' +
+          ' aria-label="Delete line ' + (i + 1) + '"' + (nL <= 1 ? " disabled" : "") + ">&times;</button></td>" +
       "</tr>";
   });
+  /* the way to make the log longer sits right under the last line, where a
+     pilot runs out of room - not down among the page buttons               */
+  x += '<tr class="addrow no-print"><td colspan="17"><div class="nl-addin">' +
+    '<button type="button" class="btn sm" id="nlAdd"' + (full ? " disabled" : "") + ">" + I.plus + "Add a line</button>" +
+    '<span class="nl-count">' + nL + (nL === 1 ? " line" : " lines") +
+      (full ? " \u00b7 that is the most this log holds" : "") + "</span>" +
+    (NL_UNDO ? '<span class="nl-undo" role="status">Line ' + (NL_UNDO.i + 1) + ' deleted. ' +
+      '<button type="button" id="nlUndo">Undo</button></span>' : "") +
+    "</div></td></tr>";
   x += '<tr class="tot"><td class="n"></td><td class="cp">Totals &rarr;</td>' +
     '<td colspan="9"></td>' +
     "<td>" + nlCalc(c.totalD) + "</td><td></td>" +
@@ -1981,7 +2111,6 @@ function navlogHtml() {
   x += "</div>";
 
   x += '<div class="nl-actions no-print"><button class="btn" id="nlSample">Build a sample nav log</button>' +
-    '<button class="btn ghost" id="nlAdd">Add a line</button>' +
     '<button class="btn ghost" id="nlPrint">Print or save as PDF</button>' +
     '<button class="btn ghost" id="nlE6B">Open the E6B</button>' +
     '<button class="btn ghost" id="nlClear">Clear it</button></div>';
@@ -2058,22 +2187,57 @@ function wireNav() {
   var d = host.querySelectorAll("[data-del]");
   for (var k = 0; k < d.length; k++) d[k].addEventListener("click", function () {
     if (NAV.legs.length <= 1) return;
-    NAV.legs.splice(+this.getAttribute("data-del"), 1); redraw();
+    var at = +this.getAttribute("data-del"), gone = NAV.legs.splice(at, 1)[0] || {};
+    NL_UNDO = legHasData(gone) ? { i: at, leg: gone } : null;
+    if (NL_UNDO) NAV.sample = false;
+    NL_FLASH = null; redraw();
   });
-  el("nlAdd").addEventListener("click", function () { NAV.legs.push({}); redraw(); });
+  var ins = host.querySelectorAll("[data-ins]");
+  for (var q = 0; q < ins.length; q++) ins[q].addEventListener("click", function () {
+    if (NAV.legs.length >= NL_MAX) return;
+    var at = +this.getAttribute("data-ins") + 1;
+    NAV.legs.splice(at, 0, {}); NL_UNDO = null; NL_FLASH = at; redraw();
+  });
+  el("nlAdd").addEventListener("click", function () {
+    if (NAV.legs.length >= NL_MAX) return;
+    NAV.legs.push({}); NL_UNDO = null; NL_FLASH = NAV.legs.length - 1; redraw();
+  });
+  if (el("nlUndo")) el("nlUndo").addEventListener("click", function () {
+    if (!NL_UNDO) return;
+    var at = Math.min(NL_UNDO.i, NAV.legs.length);
+    NAV.legs.splice(at, 0, NL_UNDO.leg); NL_UNDO = null; NL_FLASH = at; redraw();
+  });
   el("nlPrint").addEventListener("click", function () { window.print(); });
   el("nlE6B").addEventListener("click", openE6B);
   el("nlClear").addEventListener("click", function () {
     NAV = { hdr: {}, legs: [{}, {}, {}, {}, {}, {}], adv: {}, freq: {}, fuel: {}, sample: false };
+    NL_UNDO = null; NL_FLASH = null;
     redraw();
   });
   el("nlSample").addEventListener("click", function () {
+    NL_UNDO = null; NL_FLASH = null;
     if (buildSample()) { redraw(); host.scrollIntoView({ block: "start", behavior: "smooth" }); }
   });
 
+  /* a line that was just added: bring it into view and, with a mouse, put the
+     cursor in its Check Points box. On a touch screen the keyboard is left
+     closed, so pressing "Add a line" three times adds three lines.          */
+  if (NL_FLASH != null) {
+    var nr = host.querySelectorAll("table.nl-main tbody tr.leg")[NL_FLASH];
+    NL_FLASH = null;
+    if (nr) {
+      var fine = window.matchMedia && window.matchMedia("(pointer:fine)").matches;
+      var cp = nr.querySelector("td.cp input");
+      if (fine && cp) { try { cp.focus({ preventScroll: true }); } catch (e) { cp.focus(); } }
+      var tw = host.querySelector(".nl-tablewrap"); if (tw) tw.scrollLeft = 0;
+      var b = nr.getBoundingClientRect();
+      if (b.top < 70 || b.bottom > window.innerHeight - 20) nr.scrollIntoView({ block: "center" });
+    }
+  }
+
   function refresh() {
     var c = navCalc();
-    var rows = host.querySelectorAll("table.nl-main tbody tr");
+    var rows = host.querySelectorAll("table.nl-main tbody tr.leg");
     for (var r = 0; r < NAV.legs.length; r++) {
       if (!rows[r]) continue;
       var o = c.rows[r] || {}, sp = rows[r].querySelectorAll("span.nl-c");
@@ -2163,7 +2327,7 @@ var FPL_10A = [
     ["P1", "RCP 400"], ["P2", "RCP 240"], ["P3", "RCP 400 satellite voice"]
   ]},
   { g: "Special", c: [
-    ["W", "RVSM approved — file W only if you actually hold the authorisation"],
+    ["W", "RVSM approved — file W only if you actually hold the authorization"],
     ["Z", "Something else — you must then say what in Item 18 NAV/, COM/ or DAT/"]
   ]}
 ];
@@ -2418,7 +2582,7 @@ function fplCheck(d) {
          "If your GPS flies LPV minimums, B belongs in 10a. If it only does LNAV, this is fine.");
   }
   if (a.indexOf("W") >= 0) {
-    warn("Item 10a has W, which claims RVSM authorisation.",
+    warn("Item 10a has W, which claims RVSM authorization.",
          "File W only if you actually hold it. A trainer does not.");
   }
 
@@ -2437,7 +2601,7 @@ function fplCheck(d) {
 
   if (!/^[NMK]\d{4}$/.test(d.speed)) {
     bad("Item 15: cruising speed is a letter then 4 digits.",
-        "N0115 is 115 knots true. N for knots, K for kilometres per hour, M for Mach.");
+        "N0115 is 115 knots true. N for knots, K for kilometers per hour, M for Mach.");
   }
   if (!/^(VFR|[AF]\d{3}|[SM]\d{4})$/.test(d.level)) {
     bad("Item 15: the level is A or F plus 3 digits, or VFR.",
@@ -2524,7 +2688,7 @@ function pageFplan() {
                { id: "fp-sample", t: "A worked example" },
                { id: "fp-file", t: "Where you actually file it" }];
   var h = '<div class="crumb no-print"><a href="' + here("") + '">Start</a> <span>›</span> ' +
-    '<a href="' + here("tools") + '">Useful resources</a> <span>›</span> <span>ICAO flight plan</span></div>' +
+    '<a href="' + here("tools") + '">All tools</a> <span>›</span> <span>ICAO flight plan</span></div>' +
     '<div class="eyebrow no-print">FAA Form 7233-4</div>' +
     '<h1 style="font-size:clamp(24px,4.4vw,34px);margin-bottom:12px">ICAO flight plan</h1>' +
     '<p class="lede no-print">Fill it in here and watch the message assemble itself, box by box, ' +
@@ -2572,7 +2736,7 @@ function pageFplan() {
 
   /* ---- item 10 ---- */
   h += '<div class="fp-sec"><div class="fp-sh"><b>Item 10a · Navigation, communication and approach</b>' +
-    "<span>What the airplane can actually do, and what you are authorised to use</span></div>" +
+    "<span>What the airplane can actually do, and what you are authorized to use</span></div>" +
     fplBoxes("10a", FPL_10A, v.eq10a) + "</div>";
   h += '<div class="fp-sec"><div class="fp-sh"><b>Item 10b · Surveillance</b>' +
     "<span>One transponder code, plus up to three ADS-B codes</span></div>" +
@@ -2636,8 +2800,8 @@ function pageFplan() {
     fplIn("fp_endur", "E/ · Fuel endurance", v.endur, "0430",
           "HHMM of fuel on board. It has to beat the flight time plus your reserve.") +
     fplIn("fp_pob", "P/ · People on board", v.pob, "2", "Or TBN if you do not know yet.") +
-    fplIn("fp_colour", "A/ · Aircraft colour and markings", v.colour, "WHITE WITH BLUE STRIPES",
-          "How somebody would recognise it from the air.") +
+    fplIn("fp_colour", "A/ · Aircraft color and markings", v.colour, "WHITE WITH BLUE STRIPES",
+          "How somebody would recognize it from the air.") +
     fplIn("fp_pic", "C/ · Pilot in command", v.pic, "", "The name SAR will look for.") +
     fplIn("fp_tel", "C/ · Contact telephone", v.tel, "", "") +
     "</div>" +
@@ -2739,7 +2903,7 @@ var FPL_CORR = [
    "alternate has to meet its **own** weather minimums."],
   ["Item 18 · PBN/",
    "Not on the log — it comes from the airplane's equipment list and your own " +
-   "operating authorisations.",
+   "operating authorizations.",
    "**R in Item 10a and PBN/ in Item 18 always travel together.** One without the other " +
    "is the most common ICAO filing error there is."],
   ["Item 19 · E/ endurance",
@@ -2959,7 +3123,7 @@ function holdEntry(inbound, heading, right) {
        - so the 70 degree teardrop sector runs 110 to 180, and the 110 degree
          parallel sector runs 180 to 290
 
-     Derived rather than memorised: the holding side sits ANTICLOCKWISE of the
+     Derived rather than memorized: the holding side sits ANTICLOCKWISE of the
      outbound direction for right turns, clockwise for left. Getting this
      backwards sends a student confidently into unprotected airspace, so both
      turn directions are checked against worked cases before release. */
@@ -3124,7 +3288,7 @@ function holdSvg(inbound, heading, right, kind) {
    the course backwards - and that is the situation that kills people.
    ------------------------------------------------------------------------ */
 
-/* deflection in degrees, positive = needle right of centre.
+/* deflection in degrees, positive = needle right of center.
    A VOR CDI reads the angular difference between the SELECTED course and the
    radial you are on, with the TO/FROM flag resolving the ambiguity. */
 function cdiState(radial, obs, heading, isLoc, locCourse) {
@@ -3267,12 +3431,12 @@ var HOLD_PRESETS = [
   { n: "Arriving from the left", ib: 360, hd: 130, r: true,
     t: "Same hold, but you reach the fix heading 130. Standard right turns." },
   { n: "Right on the 70-degree line", ib: 360, hd: 110, r: true,
-    t: "Exactly on the boundary. The AIM allows about 5 degrees of judgement here, so either of the two neighbouring entries is defensible." }
+    t: "Exactly on the boundary. The AIM allows about 5 degrees of judgment here, so either of the two neighboring entries is defensible." }
 ];
 
 var CDI_PRESETS = [
   { n: "On course, tracking", rad: 90,  obs: 270, hd: 270, loc: false,
-    t: "Established inbound on the 090 radial with 270 set. Needle centred, TO flag." },
+    t: "Established inbound on the 090 radial with 270 set. Needle centered, TO flag." },
   { n: "Left of course",      rad: 95,  obs: 270, hd: 270, loc: false,
     t: "Five degrees off. The needle is right — fly toward it." },
   { n: "Reverse sensing",     rad: 95,  obs: 270, hd: 90,  loc: false,
@@ -3292,7 +3456,7 @@ function pageInstr(which) {
     : [{ id: "in-try", t: "Try it" }, { id: "in-rule", t: "The 70/110 rule" },
        { id: "in-fly", t: "Flying the entry" }, { id: "in-num", t: "The numbers" }];
   var h = '<div class="crumb no-print"><a href="' + here("") + '">Start</a> <span>›</span> ' +
-    '<a href="' + here("tools") + '">Useful resources</a> <span>›</span> <span>' +
+    '<a href="' + here("tools") + '">All tools</a> <span>›</span> <span>' +
     (isCdi ? "CDI and HSI" : "Holding entries") + "</span></div>" +
     '<div class="eyebrow no-print">Instrument flying</div>' +
     "<h1 style=\"font-size:clamp(24px,4.4vw,34px);margin-bottom:12px\">" +
@@ -3303,7 +3467,7 @@ function pageInstr(which) {
         "— including the one case where they disagree."
       : "Set the fix, the inbound course and your heading, and the diagram draws the pattern " +
         "and tells you which entry the rule gives you, and why. The sectors are computed, not " +
-        "memorised, so any combination you type is answered properly.") + "</p>" +
+        "memorized, so any combination you type is answered properly.") + "</p>" +
     '<div class="no-print">' + toc(items) + "</div>";
 
   h += '<section class="blk" id="in-try"><h2>Try it</h2>';
@@ -3479,8 +3643,8 @@ function renderCdi() {
   var st = cdiState(rad, obs, hd, loc, obs);
   var box = el("cdiOut"); if (!box) return;
   var dots = Math.abs(st.dev) / st.dotDeg;
-  var side = Math.abs(st.dev) < 0.05 ? "centred"
-    : (st.dev > 0 ? "right of centre" : "left of centre");
+  var side = Math.abs(st.dev) < 0.05 ? "centered"
+    : (st.dev > 0 ? "right of center" : "left of center");
   var advice;
   if (Math.abs(st.dev) < 0.05) {
     advice = "You are on the course. Hold what you have.";
@@ -3683,8 +3847,8 @@ function pageIpc() {
     'electronic systems</span></div></div>' +
     '<div class="note gold"><span class="lbl">The part people get wrong</span>' +
     'It is <b>six approaches, holding, and intercepting and tracking</b> — all three, not six approaches ' +
-    'alone. And it is six <i>calendar</i> months, so an approach flown on 3 March counts through ' +
-    '30 September. Read 61.57(c) for what may be done in a device and what the safety-pilot and ' +
+    'alone. And it is six <i>calendar</i> months, so an approach flown on March 3 counts through ' +
+    'September 30. Read 61.57(c) for what may be done in a device and what the safety-pilot and ' +
     'view-limiting-device rules are; those conditions are where most logbook disputes start.</div></section>';
 
   /* ------------------------------------------------------------ check --- */
@@ -3761,7 +3925,7 @@ function ipcEndo() {
 function ipcEndoHtml() {
   var e = ipcEndo();
   var h = '<section class="blk" id="endo"><h2>The endorsement, word for word ' +
-    '<span class="hint">AC 61-65K, dated 14 November 2025</span></h2>' +
+    '<span class="hint">AC 61-65K, dated November 14, 2025</span></h2>' +
     '<p class="lede" style="font-size:15px">This is what goes in the logbook when the check is ' +
     'satisfactory. Use the AC\u2019s wording rather than writing your own \u2014 an entry that does ' +
     'not cite <b>61.57(d)</b> is the one an inspector asks about.</p>';
@@ -4086,7 +4250,7 @@ function wxRow(tok, mean, note, kind) {
 function wxWind(tok) {
   var m = tok.match(/^(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?(KT|MPS|KMH)$/);
   if (!m) return null;
-  var unit = m[4] === "KT" ? "knots" : (m[4] === "MPS" ? "metres per second" : "km/h");
+  var unit = m[4] === "KT" ? "knots" : (m[4] === "MPS" ? "meters per second" : "km/h");
   var dir = m[1] === "VRB" ? "Variable in direction" : "From " + parseInt(m[1], 10) + " degrees true";
   var spd = parseInt(m[2], 10);
   var s = dir + " at " + spd + " " + unit;
@@ -4113,7 +4277,7 @@ function wxVis(tok) {
   }
   if (/^\d{4}$/.test(tok)) {
     var mtr = parseInt(tok, 10);
-    return wxRow(tok, "Visibility " + (mtr === 9999 ? "10 km or more" : mtr.toLocaleString() + " metres"),
+    return wxRow(tok, "Visibility " + (mtr === 9999 ? "10 km or more" : mtr.toLocaleString() + " meters"),
       "Metric visibility. Outside the United States.", "vis");
   }
   if (tok === "P6SM") return wxRow(tok, "Visibility greater than 6 statute miles",
@@ -4183,8 +4347,8 @@ function wxTemp(tok) {
   var note = "Spread is " + spread + " C. ";
   note += "Estimated cumulus base about " + Math.round(spread / 2.5 * 1000).toLocaleString() + " ft AGL. ";
   if (spread <= 2) note += "A spread this small means fog or low cloud is likely.";
-  if (t <= 0) note += " At or below freezing - carburettor icing and structural icing are live concerns.";
-  else if (t <= 20 && spread <= 12) note += " This is inside the carburettor icing range.";
+  if (t <= 0) note += " At or below freezing - carburetor icing and structural icing are live concerns.";
+  else if (t <= 20 && spread <= 12) note += " This is inside the carburetor icing range.";
   return wxRow(tok, "Temperature " + t + " C, dew point " + d + " C  (" +
     Math.round(t * 9 / 5 + 32) + " F / " + Math.round(d * 9 / 5 + 32) + " F)", note.trim(), "temp");
 }
@@ -4406,7 +4570,7 @@ function decodeMetar(raw) {
       else if ((row = wxWind(tk))) { summary.wind = row.m; }
       else if (/^\d{3}V\d{3}$/.test(tk)) {
         row = wxRow(tk, "Wind direction varying between " + parseInt(tk.slice(0, 3), 10) + " and " + parseInt(tk.slice(4), 10) + " degrees",
-          "Reported when the variation is 60 degrees or more and the speed is above 6 knots. Brief your student on which runway that really favours.", "wind");
+          "Reported when the variation is 60 degrees or more and the speed is above 6 knots. Brief your student on which runway that really favors.", "wind");
       } else if (/^\d$/.test(tk) && i + 1 < toks.length && /^\d\/\dSM$/.test(toks[i + 1])) {
         var joinedVis = tk + " " + toks[i + 1];
         row = wxVis(joinedVis);
@@ -4435,7 +4599,7 @@ function decodeMetar(raw) {
       if (!row && eat) { row = wxRemark(tk, ""); eat = 0; }
       if (!row) row = wxRow(tk, "", "Not decoded. Remarks can carry plain-language text an observer typed in.", "rmk-unknown");
     }
-    if (!row) row = wxRow(tk, "", "Not recognised. Check for a typo, or it may be a group this decoder does not carry.", "unknown");
+    if (!row) row = wxRow(tk, "", "Not recognized. Check for a typo, or it may be a group this decoder does not carry.", "unknown");
     out.push(row);
     i++;
   }
@@ -4461,7 +4625,7 @@ function decodeTaf(raw) {
       summary.station = tk;
       summary.place = ap ? ap.name + (ap.city ? ", " + ap.city + " " + ap.st : "") : "";
       row = wxRow(tk, "Station " + tk + (summary.place ? " — " + summary.place : ""),
-        "Only about 700 US airports get a TAF. If yours does not, use the nearest one and add your own judgement.", "hdr");
+        "Only about 700 US airports get a TAF. If yours does not, use the nearest one and add your own judgment.", "hdr");
     }
     else if ((m = tk.match(/^(\d{2})(\d{2})(\d{2})Z$/))) {
       summary.time = "Day " + parseInt(m[1], 10) + " at " + m[2] + ":" + m[3] + "Z";
@@ -4509,7 +4673,7 @@ function decodeTaf(raw) {
         "Only in the last line. Useful for density altitude and for frost.", "temp");
     }
     else if (tk === "RMK") row = wxRow(tk, "Remarks", "", "hdr");
-    if (!row) row = wxRow(tk, "", "Not recognised. Check for a typo, or it may be a group this decoder does not carry.", "unknown");
+    if (!row) row = wxRow(tk, "", "Not recognized. Check for a typo, or it may be a group this decoder does not carry.", "unknown");
     out.push(row);
     i++;
   }
@@ -4529,7 +4693,7 @@ var PIREP_F = {
   TA: ["Outside air temperature", "Degrees Celsius. M means minus."],
   WV: ["Wind", "Direction in degrees MAGNETIC north and speed in knots (AIM Table 7-1-7). This is the one wind in aviation weather that is not true - a METAR and a TAF are true, a PIREP is magnetic."],
   TB: ["Turbulence", "Intensity, then type. LGT, MOD, SEV, EXTRM (AIM Table 7-1-10). CAT is clear air turbulence, normally above 15,000 ft and not associated with cumuliform cloud. CHOP is rapid rhythmic bumpiness without an appreciable change in altitude or attitude. OCNL is less than a third of the time, INTMT a third to two thirds, CONS more than two thirds."],
-  IC: ["Icing", "Intensity then type: RIME, CLR (clear), MX (mixed). TRACE, LGT, MOD, SEV (AIM 7-1-21). Expect ice in visible moisture between +2 and -10 degrees Celsius."],
+  IC: ["Icing", "Intensity then type: RIME, CLR (clear), MX (mixed). TRACE, LGT, MOD, SEV (AIM 7-1-19). Expect ice in visible moisture between +2 and -10 degrees Celsius."],
   RM: ["Remarks", "Anything in plain language the pilot wanted to add."]
 };
 function wxPirepVal(f, v) {
@@ -4780,7 +4944,7 @@ function wxDecode(raw, force) {
     var label = kind === "metar" ? "METAR" : "TAF";
     if (!t) return '<div class="wx-live-box"><div class="h">' + label + "</div>" +
       '<p class="muted sm">Nothing published for ' + esc(id) + '. Only about 700 US airports get a TAF; ' +
-      "for the rest, use the nearest one that does and add your own judgement.</p></div>";
+      "for the rest, use the nearest one that does and add your own judgment.</p></div>";
     return '<div class="wx-live-box"><div class="h">' + label +
       '<button class="btn sm ghost" data-wxuse="' + esc(t.replace(/"/g, "&quot;")) + '">Decode this</button></div>' +
       '<pre class="wx-raw mono">' + esc(t) + "</pre>" +
@@ -4794,9 +4958,9 @@ function wxDecode(raw, force) {
                  { id: "wx-cat", t: (W.cat && W.cat.h) || "Flight categories" },
                  { id: "wx-tab", t: "The code tables" },
                  { id: "wx-teach", t: "Teaching it" }];
-    var h = '<div class="crumb"><a href="#/">Start</a> <span>\u203a</span> <a href="#/tools">Useful resources</a> ' +
+    var h = '<div class="crumb"><a href="#/">Start</a> <span>\u203a</span> <a href="#/tools">All tools</a> ' +
       '<span>\u203a</span> <span>Weather</span></div>' +
-      '<div class="eyebrow">Useful resources</div>' +
+      '<div class="eyebrow">All tools</div>' +
       '<h1 style="font-size:clamp(24px,4.4vw,34px);margin-bottom:12px">METAR, TAF and PIREP decoder</h1>' +
       '<p class="lede">' + fmt(W.intro || "") + "</p>" +
       '<div class="erow" style="margin:14px 0 4px"><a class="btn ghost sm" href="' + here("t/III.C") + '">' + I.book +
@@ -4845,7 +5009,7 @@ function wxDecode(raw, force) {
       '<div class="tablewrap"><table class="wx-cattab"><thead><tr><th>Category</th><th>Ceiling</th><th></th><th>Visibility</th></tr></thead><tbody>' +
       WX_CAT_ROWS.map(function (r) {
         return '<tr><td><span class="wx-badge c' + r[0] + '">' + r[0] + "</span></td>" +
-          "<td>" + esc(r[1]) + '</td><td class="jn">' + esc(r[2]) + "</td><td>" + esc(r[3]) + "</td></tr>";
+          "<td>" + esc(r[1]) + '</td><td class="jn">' + esc(r[2]).replace("/", "/<wbr>") + "</td><td>" + esc(r[3]) + "</td></tr>";
       }).join("") + "</tbody></table></div>" +
       '<div class="note gold"><span class="lbl">A category is not a legal minimum</span>' +
       fmt((W.cat && W.cat.note) || "") + "</div></section>";
@@ -4973,14 +5137,14 @@ function wxDecode(raw, force) {
 
   /* ---------- useful resources hub ---------- */
   function pageTools() {
-    var h = '<div class="eyebrow">Useful resources</div>' +
-      '<h1 style="font-size:clamp(26px,4.6vw,36px);margin-bottom:12px">Tools and other resources</h1>' +
+    var h = '<div class="eyebrow">All tools</div>' +
+      '<h1 style="font-size:clamp(26px,4.6vw,36px);margin-bottom:12px">Flight tools</h1>' +
       '<p class="lede">The working end of the site. The formulas you are expected to know, a flight computer ' +
       "that runs in the page, a weather decoder, and a cross-country nav log you can fill in and print.</p>";
     h += '<div class="grid g2" style="margin-top:24px">' +
-      tool(here("formulas"), I.calc, "Formulas and worked examples",
+      tool(here("formulas"), I.fx, "Formulas and worked examples",
         "Pressure and density altitude, wind, load factor, weight and balance, descent planning and more - each with the units and a worked example.") +
-      tool(here("navlog"), I.grid, "Cross-country nav log",
+      tool(here("navlog"), I.nav, "Cross-country nav log",
         "An interactive nav log that does the arithmetic. Written for somebody who has never filled one in, and it prints.") +
       tool(here("wx"), I.cloud, "METAR, TAF and PIREP decoder",
         "Paste any report and get it group by group, with a note on what each one is telling you \u2014 and pull the current METAR and TAF for any station.") +
@@ -5012,9 +5176,9 @@ function wxDecode(raw, force) {
   function pageFormulas() {
     var F = SC("formulas") || {};
     var items = (F.groups || []).map(function (g) { return { id: "fg-" + slug(g.h), t: g.h }; });
-    var h = '<div class="crumb"><a href="#/">Start</a> <span>\u203a</span> <a href="#/tools">Useful resources</a> ' +
+    var h = '<div class="crumb"><a href="#/">Start</a> <span>\u203a</span> <a href="#/tools">All tools</a> ' +
       '<span>\u203a</span> <span>Formulas</span></div>' +
-      '<div class="eyebrow">Useful resources</div>' +
+      '<div class="eyebrow">All tools</div>' +
       '<h1 style="font-size:clamp(24px,4.4vw,34px);margin-bottom:12px">Formulas and worked examples</h1>' +
       '<p class="lede">' + fmt(F.intro || "") + "</p>" +
       '<div class="erow" style="margin:16px 0"><button class="btn" data-open-e6b>' + I.calc +
@@ -5052,7 +5216,7 @@ function wxDecode(raw, force) {
                  { id: "nl-fields", t: "What every box means" },
                  { id: "nl-after", t: "In the airplane" }];
     var h = '<div class="crumb no-print"><a href="#/">Start</a> <span>›</span> ' +
-      '<a href="#/tools">Useful resources</a> <span>›</span> <span>Nav log</span></div>' +
+      '<a href="#/tools">All tools</a> <span>›</span> <span>Nav log</span></div>' +
       '<div class="eyebrow no-print">Cross-country flight planning</div>' +
       '<h1 style="font-size:clamp(24px,4.4vw,34px);margin-bottom:12px">Navigation log</h1>' +
       '<p class="lede no-print">' + fmt(N.intro || "") + "</p>" +
@@ -5073,11 +5237,11 @@ function wxDecode(raw, force) {
         "</ol></section>";
     }
     h += '<section class="blk" id="nl-log"><h2>The nav log <span class="hint no-print">' +
-      "White boxes are yours. Grey ones work themselves out.</span></h2>" +
+      "White boxes are yours. Gray ones work themselves out.</span></h2>" +
       '<p class="lede no-print" style="font-size:15px;margin-bottom:14px">' +
       "Never filled one in? Press <b>Build a sample nav log</b> underneath and read a finished one first, " +
       "then clear it and do your own.</p>" +
-      '<div id="nlHost">' + navlogHtml() + "</div></section>";
+      '<div id="nlHost">' + (NL_UNDO = null, navlogHtml()) + "</div></section>";
 
     h += '<section class="blk no-print" id="nl-dev"><h2>The compass deviation card</h2>' +
       '<p class="lede" style="font-size:15px;margin-bottom:14px">' +
@@ -5201,6 +5365,9 @@ function wxDecode(raw, force) {
       });
       h += "</section>";
     }
+    h += bookCard("All 56 of these FOI mnemonics are in the book too, in Section 8, \u201cTeach It!\u201d, " +
+      "each with an original drawing \u2014 next to the memory aids for Private, Instrument, Commercial " +
+      "and multiengine flying.", true);
     if (M.src) h += '<div class="note flag"><span class="lbl">Where every page number comes from</span>' +
       esc(M.src) + " Page numbers are the printed numbers in the book, not PDF page numbers.</div>";
     return h;
@@ -5457,7 +5624,7 @@ function wxDecode(raw, force) {
     });
     var h = '<div class="eyebrow">AC 61-65K · Appendix A</div>' +
       '<h1 style="font-size:30px;margin-bottom:12px">Sample endorsements</h1>' +
-      '<p class="lede">All ' + ENDO.length + " sample endorsements from AC 61-65K, dated 14 November 2025, " +
+      '<p class="lede">All ' + ENDO.length + " sample endorsements from AC 61-65K, dated November 14, 2025, " +
       "word for word. Open one to see the exact wording. The bracketed parts are what you fill in. " +
       "Copy it, then adapt it — the AC says the samples may be modified, but the substance must stay.</p>" +
       '<div class="note gold"><span class="lbl">Two things to get right</span>' +
@@ -5520,24 +5687,68 @@ function wxDecode(raw, force) {
 
   /* ---------- missed-code study table ---------- */
   function pageCodes() {
+    /* A PTS-based test reports PLT learning statement codes, an ACS-based test
+       reports ACS codes. Say which one THIS guide's report prints, and show
+       that kind of code in the example - the CFI-I page used to tell FII
+       applicants to paste "FII.I.A.1", which is this site's own numbering and
+       never appears on a report. */
+    var pts = !!(G && G.is_pts);
+    var eg = pts ? pltExample(3) : codeEg(3);
     return '<div class="eyebrow">After the knowledge test</div>' +
       '<h1 style="font-size:30px;margin-bottom:12px">Missed-code study table</h1>' +
-      '<p class="lede">Your Airman Knowledge Test Report lists the ACS codes for every question you missed. ' +
-      "Paste them here and this builds the study table: the code, the area to study in the ACS's own words, and " +
-      "where to go and read it. Then copy the table into a document and work through it.</p>" +
-      '<div class="note"><span class="lbl">How to use it</span>Paste or type the codes exactly as they appear ' +
-      "on your report — " + codeEgHtml() + " — separated by commas, " +
-      "spaces or new lines. Codes are also accepted without the " + prefixEgHtml() + " prefix.</div>" +
+      (pts
+        ? '<p class="lede">Your ' + esc((guideMeta(G.slug) || {}).test || "knowledge test") + " report lists a " +
+          "<b>PLT learning statement code</b> for every subject you missed — " + esc(G.doc) + " is a Practical " +
+          "Test Standard, and tests written against a PTS report PLT codes rather than ACS codes. Paste them here " +
+          "and this builds the study table: the code, the subject in the FAA's own words, and the Tasks in this " +
+          "guide that cover it.</p>" +
+          '<div class="note"><span class="lbl">How to use it</span>Paste or type the codes exactly as they appear ' +
+          "on your report — " + eg.map(function (c) { return '<b class="mono">' + esc(c) + "</b>"; }).join(", ") +
+          " — separated by commas, spaces or new lines. <span class=\"mono\">PLT 097</span>, " +
+          "<span class=\"mono\">P097</span> and <span class=\"mono\">097</span> are all read as " +
+          "<span class=\"mono\">PLT097</span>.</div>"
+        : '<p class="lede">Your Airman Knowledge Test Report lists the ACS codes for every question you missed. ' +
+          "Paste them here and this builds the study table: the code, the area to study in the ACS's own words, and " +
+          "where to go and read it. Then copy the table into a document and work through it.</p>" +
+          '<div class="note"><span class="lbl">How to use it</span>Paste or type the codes exactly as they appear ' +
+          "on your report — " + codeEgHtml() + " — separated by commas, " +
+          "spaces or new lines. Codes are also accepted without the " + prefixEgHtml() + " prefix, and PLT " +
+          "learning statement codes are decoded too.</div>") +
       '<div class="codetool">' +
-      '<textarea id="codeIn" rows="5" placeholder="' + esc(codeEg().join(", ")) + '"></textarea>' +
+      '<textarea id="codeIn" rows="5" placeholder="' + esc(eg.join(", ")) + '"></textarea>' +
       '<div class="erow"><button class="btn" id="buildTable">Build the table</button>' +
       '<button class="btn ghost" id="sampleCodes">Use an example</button>' +
       '<button class="btn ghost" id="clearCodes">Clear</button></div></div>' +
       '<div id="codeOut"></div>';
   }
+  /* PLT codes whose statements THIS guide covers best - so the example shows
+     the tool doing something useful rather than an arbitrary slice of 551 */
+  /* Example PLT codes for a PTS guide. The FII knowledge test covers
+     instrument knowledge (the FOI is its own test), so the example leads with
+     instrument statements that were checked by hand to land on the right
+     Task in this guide; any that stop matching are skipped, and the rest of
+     the list is filled from the best automatic matches. */
+  var PLT_EG = ["PLT215", "PLT187", "PLT186", "PLT052", "PLT201", "PLT100"];
+  function pltExample(n) {
+    n = n || 3;
+    var out = PLT_EG.filter(function (c) { return PLT[c] && pltMatches(PLT[c], 1).length; });
+    if (out.length < n) {
+      var ix = pltIndex();
+      Object.keys(PLT).map(function (code) {
+        var m = pltMatches(PLT[code], 1); if (!m.length) return null;
+        var row = null; ix.rows.forEach(function (r) { if (r.f === m[0]) row = r; });
+        return { code: code, sc: pltScore(ix, row, pltParts(PLT[code])) };
+      }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc; })
+        .forEach(function (x) { if (out.length < n && out.indexOf(x.code) < 0) out.push(x.code); });
+    }
+    return out.slice(0, n);
+  }
+
+
   /* eight real codes from THIS guide, spread across its Areas, so the sample
      button demonstrates the tool with codes that will actually resolve */
   function sampleMissedCodes() {
+    if (G && G.is_pts) { var pe = pltExample(6); return pe.slice(0, 3).join(", ") + "\n" + pe.slice(3).join(", "); }
     var picks = [], fs = flat();
     if (!fs.length) return "";
     var step = Math.max(1, Math.floor(fs.length / 8));
@@ -5592,14 +5803,161 @@ function wxDecode(raw, force) {
     return out;
   }
 
+  /* ---- PLT learning statements, inside a guide --------------------------
+     Simon, 24 Sep 2026: typing his PLT codes into the CFI-Instrument guide's own
+     study table did nothing, so he had to go back to the home page. That is the
+     one guide where PLT codes are the ONLY thing the report prints - FAA-S-8081-9E
+     is a PTS, and a PTS-based test (FII) reports learning statement codes, not
+     ACS codes. The guide table now decodes them itself, and because a statement
+     names a subject rather than an element, each row also names the Tasks in
+     THIS guide whose wording is closest - labeled as a wording match, since it
+     is one, and backed by a search link that shows the evidence. */
+  var PLT_STOP = ("calculate interpret recall define determine identify select explain describe " +
+    "compute use apply evaluate recognize recognise understand know list state the and for with " +
+    "from into onto over under between of to in on at by or an a as is are be its their this that " +
+    "information general factors characteristics definitions definition indications requirements " +
+    "procedures procedure illustrations charts chart types type related effects effect").split(" ");
+  function pltTerms(text) {
+    var seen = {}, out = [];
+    String(text || "").split(/[^A-Za-z0-9]+/).forEach(function (w) {
+      if (!w) return;
+      var acr = /^[A-Z0-9]{2,5}$/.test(w);          /* VOR, ILS, IAP, CDI ... */
+      var t = w.toLowerCase();
+      if (!acr && (t.length < 4 || PLT_STOP.indexOf(t) >= 0)) return;
+      if (t.length > 4 && /s$/.test(t) && !/ss$/.test(t)) t = t.slice(0, -1);
+      if (!seen[t]) { seen[t] = 1; out.push(t); }
+    });
+    return out;
+  }
+  var PLT_IDX = null;          /* per-guide task text, built once per guide */
+  var PLT_LIGHT = "the of a an and or to in on at by for with from as is are its".split(" ");
+  function pltBigrams(text) {
+    var w = String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter(function (x) {
+      return x && PLT_LIGHT.indexOf(x) < 0;
+    }).map(function (x) { return x.length > 4 && /s$/.test(x) && !/ss$/.test(x) ? x.slice(0, -1) : x; });
+    var out = [];
+    for (var i = 0; i + 1 < w.length; i++) out.push(w[i] + " " + w[i + 1]);
+    return out;
+  }
+  function pltIndex() {
+    if (PLT_IDX && PLT_IDX.slug === (G && G.slug)) return PLT_IDX;
+    var df = {}, bdf = {}, rows = flat().map(function (f) {
+      var c = C[f.code] || {}, w = {}, bi = {}, heads = [];
+      function add(txt, wt) {
+        var ts = pltTerms(txt);
+        ts.forEach(function (t) { if (!w[t] || w[t] < wt) w[t] = wt; });
+        if (wt >= 2) {
+          pltBigrams(txt).forEach(function (b) { bi[b] = 1; });
+          var hs = {}; ts.forEach(function (t) { hs[t] = 1; }); heads.push(hs);
+        }
+      }
+      add(f.t.title, 3);
+      (c.cards || []).forEach(function (k) { add(k.h, 2); add(k.sub, 1); });
+      if (c.keywords) add(c.keywords, 2);
+      "KRS".split("").forEach(function (k) { (f.t[k] || []).forEach(function (e) { add(e.text, 1); }); });
+      Object.keys(w).forEach(function (t) { df[t] = (df[t] || 0) + 1; });
+      Object.keys(bi).forEach(function (b) { bdf[b] = (bdf[b] || 0) + 1; });
+      return { f: f, w: w, bi: bi, heads: heads };
+    });
+    PLT_IDX = { slug: G && G.slug, rows: rows, df: df, bdf: bdf, n: rows.length };
+    return PLT_IDX;
+  }
+  var PLT_MIN = 4.0;
+  /* Precision first - no suggestion is better than a wrong one. A Task
+     qualifies in one of two ways:
+       1. a two-word PHRASE from the statement appears in its title or a card
+          heading ("magnetic compass", "turn coordinator", "departure
+          procedure") - phrases do not collide the way single words do; or
+       2. at least two DISTINCTIVE statement words (rare across this guide)
+          appear together in ONE heading or its title.
+     Each rule answers a false match found in testing: rare body words sent
+     "forces acting on aircraft" to Missed Approach, a lone shared word sent
+     "cloud clearance" to ATC clearances and "cockpit voice recorder" to voice
+     communications, two words from two unrelated headings ("The three
+     basic elements", "Developing communication skills") sent "basic
+     instrument flying - fundamental skills" to Human Behavior, and a phrase
+     common to many headings ("the Instrument Flying Handbook") matched on
+     name alone. A phrase now counts only if few Tasks' headings carry it. */
+  function pltParts(statement) {
+    var st = String(statement || "").replace(/^\s*\w+\s+/, "");       /* drop the verb */
+    return { all: pltTerms(st), bi: pltBigrams(st.replace(/\s*[\/\-]\s*/g, " | ")).filter(function (b) {
+      return b.indexOf("|") < 0; }) };
+  }
+  function pltScore(ix, row, parts) {
+    function idf(t) { return Math.log((ix.n + 1) / ((ix.df[t] || 0) + 1)); }
+    var phraseCap = Math.max(2, Math.round(ix.n / 9));   /* a phrase in few Tasks */
+    var phrase = 0, sameHead = 0, sc = 0;
+    parts.bi.forEach(function (b) { if (row.bi[b] && (ix.bdf[b] || 0) <= phraseCap) phrase++; });
+    var distinct = parts.all.filter(function (t) { return idf(t) >= 1.2; });
+    row.heads.forEach(function (h) {                      /* two words, ONE heading */
+      var k = 0; distinct.forEach(function (t) { if (h[t]) k++; });
+      if (k > sameHead) sameHead = k;
+    });
+    if (!phrase && sameHead < 2) return 0;
+    parts.all.forEach(function (t) {
+      var wt = row.w[t], d = idf(t); if (!wt || d < 0.9) return;
+      sc += (wt >= 2 ? wt : 0.25) * d;
+    });
+    return sc + phrase * 4;
+  }
+  function pltMatches(statement, n) {
+    var parts = pltParts(statement); if (!parts.all.length) return [];
+    var ix = pltIndex();
+    var ranked = ix.rows.map(function (r) { return { f: r.f, sc: pltScore(ix, r, parts) }; })
+      .filter(function (x) { return x.sc >= PLT_MIN; })
+      .sort(function (a, b) { return b.sc - a.sc; });
+    return ranked.filter(function (x, i) { return i === 0 || x.sc >= ranked[0].sc * 0.7; })
+      .slice(0, n || 2).map(function (x) { return x.f; });
+  }
+  /* One tokenizer for both study tables. "PLT 097" and "PLT-097" are one code,
+     a bare PLT/P is a stray label, a token with no digit is a word off the
+     report, and four or more digits is a date or a score, not a code. */
+  function codeTokens(raw) {
+    raw = String(raw || "").toUpperCase().replace(/\b(PLT|P)[\s\-]+(\d)/g, "$1$2");
+    return raw.split(/[^A-Z0-9.]+/).map(function (x) {
+      return x.replace(/^\.+|\.+$/g, "");       /* "2028." at the end of a sentence */
+    }).filter(function (x) {
+      /* all digits: only a three-digit PLT number is a code; anything else is
+         a date, a score or a page number from the report header */
+      if (/^\d+$/.test(x)) return x.length === 3;
+      return x.length > 1 && !/^(PLT|P)$/.test(x) && /\d/.test(x);
+    });
+  }
+  function pltRowHtml(code, statement, inGuide) {
+    var m = inGuide ? pltMatches(statement, 2) : [];
+    return '<tr class="pltrow"><td class="mono nw" data-l="Missed code">' + esc(code) + "</td>" +
+      '<td data-l="Area to study"><b>Learning statement</b><br>' + esc(statement) +
+      (m.length ? '<div class="pltm"><span>Closest in this guide, by wording:</span> ' +
+        m.map(function (f) {
+          return '<a href="' + here("t/" + f.code) + '">' + esc(f.code + " " + f.t.title) + "</a>";
+        }).join(" · ") + "</div>" : "") + "</td>" +
+      '<td data-l="Resources">FAA Learning Statement Reference Guide<br><i>Search the subject: ' +
+      (inGuide ? '<a href="' + here("search/" + encodeURIComponent(statement.replace(/\s*[-\/]\s*/g, " ").slice(0, 48))) +
+                 '">in this guide</a> · ' : "") +
+      '<a href="#/search/' + encodeURIComponent(statement.replace(/\s*[-\/]\s*/g, " ").slice(0, 48)) +
+      '">across every guide</a></i></td></tr>';
+  }
+  function pltNoteHtml() {
+    return '<div class="note"><span class="lbl">About the PLT rows</span>' +
+      "A learning statement names a <b>subject</b>, not one ACS element, so there is no single Task it " +
+      "belongs to. The Tasks named on each row are the ones whose wording is closest to the statement — " +
+      "a starting point, not a ruling. Study the subject, then have your instructor sign that you did " +
+      "(14 CFR 61.39(a)(6)(iii) and AC 61-65K).</div>";
+  }
+
   function buildCodeTable() {
-    var raw = el("codeIn").value || "", out = el("codeOut");
-    var toks = raw.toUpperCase().split(/[^A-Z0-9.]+/).filter(function (s) { return s.length > 3; });
+    var out = el("codeOut"), toks = codeTokens(el("codeIn").value);
     if (!toks.length) { out.innerHTML = '<p class="muted">No codes found. Paste the codes from your test report above.</p>'; return; }
-    var rows = [], bad = [], seen = {};
+    /* dedupe on what a token RESOLVES to, not how it was typed: PLT097, P097
+       and 097 are one code; FII.I.A.1 and I.A.1 are one element */
+    var rows = [], pltRows = [], bad = [], done = {};
     toks.forEach(function (tk) {
       var code = tk.replace(/\.$/, "");
-      if (seen[code]) return; seen[code] = 1;
+      var pl = normPlt(code);
+      if (pl) {
+        if (!done["plt:" + pl]) { done["plt:" + pl] = 1; pltRows.push([pl, PLT[pl]]); }
+        return;
+      }
       /* A report prints the code with its document prefix, but people retype
          them without. Try it as given, then with each prefix this guide uses. */
       var f = first(findElement(code));
@@ -5607,27 +5965,25 @@ function wxDecode(raw, force) {
         var pres = codePrefixes();
         for (var pi = 0; pi < pres.length && !f; pi++) f = first(findElement(pres[pi] + "." + code));
       }
-      if (!f) { if (/\d/.test(code)) bad.push(code); return; }
+      if (!f) { bad.push(code); return; }
+      if (done["acs:" + f.el.code]) return; done["acs:" + f.el.code] = 1;
       rows.push(f);
     });
-    var looksPlt = bad.some(function (c) { return /^(?:PLT|P)?0*\d{1,3}$/.test(c); });
-    if (!rows.length) {
+    var docName = esc(G ? G.doc : "this document");
+    if (!rows.length && !pltRows.length) {
       out.innerHTML = '<div class="note flag"><span class="lbl">No codes matched</span>' +
-        "None of those codes are in the " + esc(ratingWords()) + " set of " + esc(G ? G.doc : "this document") + ": " +
-        '<span class="mono">' + esc(bad.join(", ")) + "</span>. Check for typing errors, or the code may belong to " +
-        "an ACS for a different certificate." +
-        (looksPlt ? ' Those look like <b>PLT learning statement codes</b>, which a test written against a ' +
-          'PTS reports \u2014 decode them on the <a href="#/codes">missed-code page</a>, which handles both ' +
-          'systems.' : "") + "</div>";
+        '<span class="mono">' + esc(bad.join(", ")) + "</span> — none of those are an element of the " +
+        esc(ratingWords()) + " set of " + docName + " or a PLT learning statement code. Check for typing " +
+        "errors, or the code may belong to a different certificate — the " +
+        '<a href="#/codes">missed-code page</a> on the home page decodes every test.</div>';
       return;
     }
+    var n = rows.length + pltRows.length;
     var h = '<div class="erow" style="margin:22px 0 12px"><button class="btn" id="copyTable">' + I.copy +
       " Copy the table</button><span class=\"muted sm\">Pastes into Word, Google Docs or Pages as a real table.</span>" +
-      '<span class="chip">' + rows.length + " code" + (rows.length === 1 ? "" : "s") + "</span></div>";
-    if (bad.length) h += '<div class="note flag"><span class="lbl">Not recognised</span><span class="mono">' +
-      esc(bad.join(", ")) + "</span> \u2014 not in this ACS." +
-      (looksPlt ? ' Those look like PLT learning statement codes; the <a href="#/codes">missed-code page</a> ' +
-        'decodes those too.' : "") + "</div>";
+      '<span class="chip">' + n + " code" + (n === 1 ? "" : "s") + "</span></div>";
+    if (bad.length) h += '<div class="note flag"><span class="lbl">Not recognized</span><span class="mono">' +
+      esc(bad.join(", ")) + "</span> — not an element of " + docName + " and not a PLT code.</div>";
     h += '<div class="tablewrap"><table class="studytable" id="studyTable"><thead><tr>' +
       "<th>Missed code</th><th>Area to study</th><th>Resources</th></tr></thead><tbody>";
     rows.forEach(function (f) {
@@ -5637,9 +5993,12 @@ function wxDecode(raw, force) {
         "</b><br>" + esc(f.el.text) + "</td>" +
         '<td data-l="Resources">' + refs.map(function (r) {
           return r[2] ? '<a href="' + esc(r[2]) + '" target="_blank" rel="noopener">' + esc(r[1]) + "</a>" : esc(r[1]);
-        }).join("<br>") + "<br><i>This site: " + esc(f.area.roman + "." + f.task.letter) + "</i></td></tr>";
+        }).join("<br>") + '<br><i>This site: <a href="' + here("t/" + f.area.roman + "." + f.task.letter) + '">' +
+        esc(f.area.roman + "." + f.task.letter) + "</a></i></td></tr>";
     });
+    pltRows.forEach(function (r) { h += pltRowHtml(r[0], r[1], true); });
     h += "</tbody></table></div>";
+    if (pltRows.length) h += pltNoteHtml();
     out.innerHTML = h;
     el("copyTable").addEventListener("click", function () { copyTable(this); });
   }
@@ -5664,7 +6023,10 @@ function wxDecode(raw, force) {
       "start learning why the rules are written the way they are.</li>" +
       "<li><b>Flight school at ATP.</b> Private, Instrument, Commercial Single-Engine, Commercial Multiengine. " +
       "Head down, one rating at a time.</li>" +
-      "<li><b>Now: the CFI, under Part 61.</b> Which is exactly what this site was built for.</li>" +
+      "<li><b>CFI and CFII, September 2026.</b> The flight instructor certificate, then the instrument " +
+      "instructor rating on it. This site started as my own CFI study guide and grew with every checkride.</li>" +
+      "<li><b>A book, September 2026.</b> <i>Fly by the Letters</i>: the memory aids pilots use, explained " +
+      "letter by letter. More about it below.</li>" +
       "</ol></section>";
 
     h += '<section class="blk"><h2>The extra pieces</h2>' +
@@ -5679,11 +6041,13 @@ function wxDecode(raw, force) {
       "</div></section>";
 
     h += '<section class="blk"><h2>This site is my graduation project</h2>' +
-      '<p class="lede" style="margin-bottom:0">Nobody asked me for it. There is no requirement anywhere ' +
-      "that says a CFI applicant has to build a reference site for the certificate they are chasing. " +
+      '<p class="lede" style="margin-bottom:0">Nobody asked me for it. There was no requirement anywhere ' +
+      "that said a CFI applicant had to build a reference site for the certificate they were chasing. " +
       "I wanted to do it anyway. I think a good work ethic and continuing education are the two things that " +
       "separate somebody who passed a checkride from somebody you would actually want teaching your kid to " +
       "fly, and building this was how I proved that to myself. If it also helps you, even better.</p></section>";
+
+    h += '<section class="blk"><h2>The book</h2>' + bookCard() + "</section>";
 
     h += '<div class="note gold" style="margin-top:26px"><span class="lbl">Where this is going</span>' +
       "IVAO gave me sixteen years of confidence in this before I was old enough to do anything about it. " +
@@ -5695,7 +6059,7 @@ function wxDecode(raw, force) {
       "claim on it is cited, and why anyone can have it.</div>";
 
     h += '<div class="note" style="margin-top:16px"><span class="lbl">One honest caveat</span>' +
-      "This is study material written by a CFI applicant. It is not FAA guidance. The ACS element wording " +
+      "This is study material written by one flight instructor. It is not FAA guidance. The ACS element wording " +
       "quoted here is exact; everything around it is my understanding, cited so you can check it yourself. " +
       "If something here disagrees with the FAA source, the FAA source is right \u2014 go to the " +
       '<a href="#/resources">official resources</a> and read it. Building that habit is honestly half the job.</div>';
@@ -5705,22 +6069,57 @@ function wxDecode(raw, force) {
     return '<div class="cred"><span class="tg">' + esc(tag) + "</span><b>" + esc(title) + "</b><span>" + esc(desc) + "</span></div>";
   }
 
+  var NUMW = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+              "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen"];
+  function numWord(n) { var w = NUMW[n]; return w ? w.charAt(0).toUpperCase() + w.slice(1) : String(n); }
+  /* "What gets tested", built from the guide's own data: the count, the label
+     and the lists all come from required_tasks.json, so no guide can show
+     another guide's numbers. */
   function pagePlan() {
-    var h = '<div class="eyebrow">Before you go</div><h1 style="font-size:30px;margin-bottom:12px">What actually gets tested</h1>' +
-      '<p class="lede">The evaluator does not test every task. Each Area of Operation carries its own selection ' +
-      "rule, quoted below word for word from " + esc(G ? G.doc : "the ACS") +
-      ". Some tasks are guaranteed \u2014 those are worth knowing cold.</p>";
-    h += '<div class="note gold"><span class="lbl">Guaranteed on an initial CFI checkride</span>' +
-      reqSpec().required.map(function (c) {
-        var t = taskOf(c);
-        return "<b>" + c + "</b> " + esc(t ? t.title : "");
-      }).join(" &nbsp;·&nbsp; ") +
-      "<br><br>Eleven Tasks you can count on. Everything else in each Area is the evaluator's choice, " +
-      "so know these cold and be ready for the rest.</div>";
-    h += '<section class="blk"><h2>Selection rule, area by area</h2>' + ACS.map(function (a) {
-      return '<div class="cblk"><div class="top"><h3><a href="' + here("a/" + a.roman) + '">Area ' + a.roman + " — " + esc(a.title) + "</a></h3></div>" +
-        '<ul><li>' + esc(a.note || "No selection note published for this Area.") + "</li></ul></div>";
-    }).join("") + "</section>";
+    var req = reqSpec(), add = addonSpec(), m = guideMeta(G.slug) || {};
+    var anyNote = ACS.some(function (a) { return a.note; });
+    var h = '<div class="eyebrow">Before you go</div><h1 style="font-size:30px;margin-bottom:12px">What actually gets tested</h1>';
+    if (req.required.length || anyNote) {
+      h += '<p class="lede">The evaluator does not test every task. Each Area of Operation carries its own selection ' +
+        "rule, quoted below word for word from " + esc(G.doc) +
+        ". Some tasks are guaranteed \u2014 those are worth knowing cold.</p>";
+    } else {
+      h += '<p class="lede">' + esc(G.doc) + " publishes no short list of guaranteed Tasks for this test.</p>";
+    }
+    if (add) {
+      h += '<div class="note"><span class="lbl">Adding the rating to a CFI \u2014 most applicants</span>' +
+        "You already hold a flight instructor certificate with an airplane rating. Areas " +
+        esc((add.not_required_areas || []).join(" and ")) + " are not required, and these " +
+        numWord(add.required.length).toLowerCase() + " Tasks are mandatory:" +
+        reqChips(add.required, function (c) { return (add.why || {})[c] || ""; }) +
+        '<p class="v-note">' + esc(add.source || G.doc) + ". The rest of each Area is selected under " +
+        "that Area's own note, below.</p></div>";
+    }
+    if (req.required.length) {
+      h += '<div class="note gold"><span class="lbl">Guaranteed on an initial ' +
+        esc((m.cert || "").toLowerCase()) + " checkride</span>" +
+        reqChips(req.required, mustWhy) +
+        "<p style=\"margin:12px 0 0\">" + numWord(req.required.length) + " Tasks you can count on" +
+        (add ? " when the Area notes apply as written" : "") + ". Everything else in each Area is the " +
+        "evaluator's choice, so know these cold and be ready for the rest.</p></div>";
+    } else if (req.note) {
+      h += '<div class="note"><span class="lbl">How the evaluator picks Tasks</span>' + fmt(req.note) + "</div>";
+    }
+    if (req.excluded && req.excluded.length) {
+      h += '<div class="note"><span class="lbl">Not tested in a single-engine airplane</span>' +
+        req.excluded.map(function (c) { var t = taskOf(c); return "<b>" + esc(c) + "</b> " + esc(t ? t.title : ""); })
+          .join(" &nbsp;·&nbsp; ") +
+        (req.excluded_why ? "<br><br>" + esc(req.excluded_why) : "") + "</div>";
+    }
+    if (anyNote) {
+      h += '<section class="blk"><h2>Selection rule, area by area</h2>' + ACS.map(function (a) {
+        return '<div class="cblk"><div class="top"><h3><a href="' + here("a/" + a.roman) + '">Area ' + a.roman +
+          " — " + esc(a.title) + "</a></h3></div>" +
+          "<ul><li>" + esc(a.note || "No selection note is published for this Area.") + "</li>" +
+          (addonSkips(a.roman) ? "<li><b>Not required when adding the rating to a CFI.</b></li>" : "") +
+          "</ul></div>";
+      }).join("") + "</section>";
+    }
     return h;
   }
 
@@ -5752,9 +6151,15 @@ function wxDecode(raw, force) {
       a.tasks.length + "</span></summary><ol class=\"tix\">" +
       a.tasks.map(function (t) {
         return '<li><a href="' + here("t/" + roman + "." + t.letter) + '"><span class="c mono">' + t.letter + "</span>" +
-          esc(t.title) + (mandatory(a, t) ? ' <span class="chip flag sm">must select</span>' : "") + "</a></li>";
+          esc(t.title) + mustChip(a, t, "sm", true) + "</a></li>";
       }).join("") + "</ol></details>";
     if (a.note) h += '<div class="note"><span class="lbl">' + STD() + ' selection rule — quoted</span>' + esc(a.note) + "</div>";
+    if (addonSkips(roman)) {
+      h += '<div class="note gold"><span class="lbl">Adding the rating to a CFI</span>' +
+        "This Area is <b>not required</b> when you already hold a flight instructor certificate with an " +
+        "airplane rating and are adding the instrument rating (" + esc(addonSpec().source || G.doc) + "). " +
+        "It is required on an initial flight instructor instrument certificate.</div>";
+    }
     if (c.order) h += '<div class="note gold"><span class="lbl">Teaching order</span>' + fmt(c.order) + "</div>";
     h += '<section class="blk"><h2>Tasks <span class="hint">' + a.tasks.length + " in this area</span></h2>" +
       '<div class="tlist">' + a.tasks.map(function (t) {
@@ -5768,7 +6173,7 @@ function wxDecode(raw, force) {
           '<span class="chip r">R ' + t.R.filter(nosub).length + "</span>" +
           '<span class="chip s">S ' + t.S.filter(nosub).length + "</span>" +
           (t.ratings ? '<span class="chip">' + esc(t.ratings) + "</span>" : "") +
-          (mandatory(a, t) ? '<span class="chip flag">Evaluator must select</span>' : "") +
+          mustChip(a, t, "", true) +
           "</span></span></a>";
       }).join("") + "</div></section>";
     return h;
@@ -5790,7 +6195,8 @@ function wxDecode(raw, force) {
       '<div class="tmeta"><span class="chip k">' + esc(code) + "</span>" +
       '<span class="chip">' + esc(t.prefix) + "." + esc(roman) + "." + esc(t.letter) + ".*</span>" +
       (t.ratings ? '<span class="chip">' + esc(t.ratings) + "</span>" : "") +
-      (mandatory(a, t) ? '<span class="chip flag">Evaluator must select this task</span>' : "") +
+      mustChip(a, t, "", false) +
+      (addonSkips(roman) ? ' <span class="chip wrap">Not required when adding the rating to a CFI</span>' : "") +
       "</div>" +
       (c.oneLine ? '<p class="lede">' + fmt(c.oneLine) + "</p>" : "") +
       (isAnchor("weather", code) ? '<div class="erow" style="margin-top:14px">' +
@@ -6004,9 +6410,11 @@ function wxDecode(raw, force) {
           '<i>' + (t.kind === "plt" ? "PLT codes" : "ACS codes") + " · " + esc(g.short || "") + "</i></a>";
       }).join("") + "</div></section>";
     h += '<div class="note"><span class="lbl">Why the examiner asks about these</span>' +
-      "Your instructor has to give you instruction on every area of deficiency on the report and " +
-      "endorse that it happened, you have to bring the report to the practical test, and the examiner " +
-      "is required to evaluate those areas during the oral. That is what this table is for.</div>";
+      "If your report shows deficient subject areas, 14 CFR 61.39(a)(6)(iii) requires your instructor to " +
+      "endorse that you have since shown satisfactory knowledge of each one (endorsement A.2), and you " +
+      "bring the report to the practical test. On an ACS test the evaluator's required minimum for every " +
+      "Task tested includes any element you missed on the knowledge test (ACS Appendix 1). That is what " +
+      "this table is for.</div>";
     return h;
   }
 
@@ -6050,9 +6458,10 @@ function wxDecode(raw, force) {
       '<div id="gcodeOut"></div>';
 
     h += '<div class="note flag" style="margin-top:20px"><span class="lbl">Bring the report</span>' +
-      "14 CFR 61.39(a)(6)(ii): if your report shows deficient subject areas, your instructor gives you " +
-      "instruction in each one and endorses that it happened, and you bring the report to the practical " +
-      "test. The evaluator is required to cover those areas in the oral.</div>";
+      "14 CFR 61.39(a)(6)(iii): if your report shows deficient subject areas, your instructor endorses " +
+      "that you have since shown satisfactory knowledge of each one (endorsement A.2), and you bring the " +
+      "report to the practical test. On an ACS test the evaluator's required minimum for every Task tested " +
+      "includes any element you missed on the knowledge test (ACS Appendix 1).</div>";
     return h;
   }
 
@@ -6083,9 +6492,14 @@ function wxDecode(raw, force) {
   /* PLT001 / plt 1 / P097 / 097 all mean the same row of the Learning
      Statement Reference Guide. Returns the canonical code or null. */
   function normPlt(tok) {
-    var m = /^(?:PLT|P)?0*(\d{1,3})$/.exec(tok);
+    /* With a PLT or P in front, 1-3 digits is a code (PLT97 = PLT097). A BARE
+       number only counts at exactly three digits, the way the report prints
+       it: pasting the report header turned the date 9/14/2026 into PLT014 and
+       a score of 82 into PLT082 before this rule. */
+    var m = /^(?:(?:PLT|P)0*(\d{1,3})|(\d{3}))$/.exec(tok);
     if (!m) return null;
-    var code = "PLT" + ("000" + m[1]).slice(-3);
+    var n = parseInt(m[1] || m[2], 10);
+    var code = "PLT" + ("000" + n).slice(-3);
     return PLT[code] ? code : null;
   }
 
@@ -6096,10 +6510,7 @@ function wxDecode(raw, force) {
     /* "PLT 097" and "PLT-097" are the same code as "PLT097"; join them before
        splitting, or the box turns one code into a stray "PLT" and a stray
        number. Then drop a bare PLT/P with no digits behind it. */
-    var raw = (box.value || "").toUpperCase().replace(/\b(PLT|P)[\s\-]+(\d)/g, "$1$2");
-    var toks = raw.split(/[^A-Z0-9.]+/).filter(function (x) {
-      return x.length > 2 && !/^(PLT|P)$/.test(x);
-    });
+    var toks = codeTokens(box.value);
     if (!toks.length) {
       out.innerHTML = '<p class="muted">No codes found. Paste the codes from your test report above.</p>';
       return;
@@ -6123,7 +6534,7 @@ function wxDecode(raw, force) {
       }
       /* a plain run of 4+ digits is a date or a score off the report header,
          not a code in either system */
-      if (!f) { if (/\d/.test(code) && !/^\d{4,}$/.test(code)) bad.push(code); return; }
+      if (!f) { bad.push(code); return; }
       if (done["acs:" + f.el.code]) return; done["acs:" + f.el.code] = 1;
       acsRows.push(f);
     });
@@ -6140,7 +6551,7 @@ function wxDecode(raw, force) {
     var h = '<div class="erow" style="margin:22px 0 12px"><button class="btn" id="gCopy">' + I.copy +
       " Copy the table</button><span class=\"muted sm\">Pastes into Word, Google Docs or Pages as a " +
       "real table.</span><span class=\"chip\">" + n + " code" + (n === 1 ? "" : "s") + "</span></div>";
-    if (bad.length) h += '<div class="note flag"><span class="lbl">Not recognised</span><span class="mono">' +
+    if (bad.length) h += '<div class="note flag"><span class="lbl">Not recognized</span><span class="mono">' +
       esc(bad.join(", ")) + "</span> \u2014 not an element of " +
       esc((LOADED[t.guide] || {}).doc || "that document") + " and not a PLT code.</div>";
 
@@ -6156,20 +6567,9 @@ function wxDecode(raw, force) {
         }).join("<br>") + '<br><i>This site: <a href="' + guideHref(t.guide, "t/" + f.area.roman + "." + f.task.letter) +
         '">' + esc(f.area.roman + "." + f.task.letter) + "</a></i></td></tr>";
     });
-    pltRows.forEach(function (r) {
-      h += '<tr><td class="mono nw" data-l="Missed code">' + esc(r[0]) + "</td>" +
-        '<td data-l="Area to study"><b>Learning statement</b><br>' + esc(r[1]) + "</td>" +
-        '<td data-l="Resources">FAA Learning Statement Reference Guide<br>' +
-        '<i>Search this subject: <a href="#/search/' + encodeURIComponent(r[1].slice(0, 40)) +
-        '">across every guide</a></i></td></tr>';
-    });
+    pltRows.forEach(function (r) { h += pltRowHtml(r[0], r[1], false); });
     h += "</tbody></table></div>";
-    if (pltRows.length) {
-      h += '<div class="note"><span class="lbl">About the PLT rows</span>' +
-        "A learning statement names a <b>subject</b>, not a single element, so there is no one Task to " +
-        "send you to. Close it by studying the subject and having your instructor sign that you did. " +
-        "The link searches every guide on this site for that wording.</div>";
-    }
+    if (pltRows.length) h += pltNoteHtml();
     out.innerHTML = h;
     if (el("gCopy")) el("gCopy").addEventListener("click", function () { copyTable(this, el("gTable")); });
   }
@@ -6242,9 +6642,14 @@ function elementQuestion(kind, text) {
 
 function mockBank(g) {
   var pool = [];
+  /* Tasks the document itself says to omit - on the CFI-Instrument PTS, the
+     multiengine Tasks IX.C and IX.D unless a multiengine airplane is furnished */
+  var omit = (g.required && g.required.excluded) || [];
+  var std = g.is_pts ? "PTS" : "ACS";
   (g.acs || []).forEach(function (a) {
     (a.tasks || []).forEach(function (t) {
       var code = a.roman + "." + t.letter;
+      if (omit.indexOf(code) >= 0) return;
       var v = (g.content || {})[code] || {};
       var live = [];
       "KRS".split("").forEach(function (k) {
@@ -6262,7 +6667,7 @@ function mockBank(g) {
       live.forEach(function (x) {
         pool.push({ area: a.roman, areaTitle: a.title, code: code, task: t.title,
                     q: elementQuestion(x.kind, x.el.text),
-                    a: "The ACS element reads: “" + x.el.text + "”\n\n" +
+                    a: "The " + std + " element reads: “" + x.el.text + "”\n\n" +
                        "A complete answer covers what it is, why it matters for safety, and how " +
                        "it applies to the flight you are planning.",
                     src: "element", id: x.el.code, els: [x.el.code], kind: x.kind });
@@ -6312,14 +6717,14 @@ var MOCK_OPEN = {
        "61.103(a). I read, speak, write and understand English, 61.103(c).\n\n" +
        "**The paperwork.** My knowledge test report, passed and still valid, 61.103(e) - and if it " +
        "shows deficient subject areas, my instructor gave me instruction in each one and endorsed " +
-       "it, which is 61.39(a)(6)(ii). My logbook, with the 61.109(a) experience and the endorsements: " +
+       "it, which is 61.39(a)(6)(iii). My logbook, with the 61.109(a) experience and the endorsements: " +
        "the A.36 knowledge test endorsement, the A.37 practical test endorsement for the 61.107(b)(1) " +
        "areas of operation, and the A.1 endorsement saying I received and logged training within the " +
        "2 calendar months before this month, which is 61.39(a)(6)(i). My IACRA application, signed " +
        "by my instructor.\n\n" +
        "**The airplane.** 61.45 says I have to furnish it, and that it has to have an airworthiness " +
        "certificate, the equipment for every task, and no operating limitation that gets in the way. " +
-       "So: airworthiness certificate, registration, radio station licence if we were going " +
+       "So: airworthiness certificate, registration, radio station license if we were going " +
        "international, operating limitations and POH, weight and balance - ARROW - plus the " +
        "maintenance records showing the annual, the 100-hour if it is required, the transponder, the " +
        "static system and the ELT battery.\n\n" +
@@ -6335,7 +6740,7 @@ var MOCK_OPEN = {
        "medical certificate, valid today, because I am acting as pilot in command on this flight. " +
        "English language, 61.65(a)(2).\n\n" +
        "**The paperwork.** The IRA knowledge test report, still valid, 61.65(a)(7), with any " +
-       "deficient areas retrained and endorsed under 61.39(a)(6)(ii). My logbook showing 61.65(d): " +
+       "deficient areas retrained and endorsed under 61.39(a)(6)(iii). My logbook showing 61.65(d): " +
        "50 hours of cross-country pilot in command with at least 10 in an airplane; 40 hours of " +
        "actual or simulated instrument time with 15 from an instrument-airplane instructor; the " +
        "3 hours within the 2 calendar months before the test; and the long IFR cross-country - " +
@@ -6456,10 +6861,27 @@ function mockOpener(g) {
   };
 }
 
+/* ---- which test --------------------------------------------------------------
+   The CFI-Instrument PTS describes two different tests. Most applicants already
+   hold a flight instructor certificate with an airplane rating and are ADDING
+   the instrument rating: the PTS table on page 18 leaves Areas I and IV out and
+   makes its own Tasks mandatory. The Area notes alone describe an initial
+   flight instructor instrument certificate. The mock asks which one.         */
+var MK_PATH = "addon";
+function mkAddon(g) { return (g && g.required && g.required.addon) || null; }
+function mkPathSpec(g, path) {
+  var add = mkAddon(g);
+  if (add && path !== "initial") {
+    return { path: "addon", req: add.required || [], skip: add.not_required_areas || [], add: add };
+  }
+  return { path: "initial", req: (g.required && g.required.required) || [], skip: [], add: null };
+}
+
 /* ---- selection ----------------------------------------------------------- */
-function mockSelect(g, n, deficient, seed) {
+function mockSelect(g, n, deficient, seed, path) {
   var rnd = mockRng(seed);
-  var pool = mockBank(g);
+  var spec = mkPathSpec(g, path);
+  var pool = mockBank(g).filter(function (q) { return spec.skip.indexOf(q.area) < 0; });
   var byId = {};
   pool.forEach(function (q) { byId[q.id] = q; });
 
@@ -6485,10 +6907,18 @@ function mockSelect(g, n, deficient, seed) {
   }
 
   /* 1. the knowledge test deficiencies. Appendix 1 is explicit that these
-        must be covered, so they go in first and are labelled. */
+        must be covered, so they go in first and are labeled. */
   var defTasks = {};
   (deficient || []).forEach(function (code) {
-    var hit = pool.filter(function (q) { return q.els.indexOf(code) >= 0; });
+    var hit;
+    if (/^PLT\d{3}$/.test(code)) {
+      /* a PTS report prints PLT learning statement codes: take a question from
+         the Task in this guide whose wording is closest to the statement */
+      var tk = PLT[code] ? pltMatches(PLT[code], 1)[0] : null;
+      hit = tk ? pool.filter(function (q) { return q.code === tk.code; }) : [];
+    } else {
+      hit = pool.filter(function (q) { return q.els.indexOf(code) >= 0; });
+    }
     if (hit.length) {
       take(hit[Math.floor(rnd() * hit.length)], "Missed on the knowledge test");
       defTasks[hit[0].code] = 1;
@@ -6496,14 +6926,14 @@ function mockSelect(g, n, deficient, seed) {
   });
 
   /* 2. Tasks the document says the evaluator must select */
-  var req = (g.required && g.required.required) || [];
-  req.forEach(function (code) {
+  spec.req.forEach(function (code) {
     var hit = shuffle(pool.filter(function (q) { return q.code === code; }), rnd);
-    if (hit.length) take(hit[0], "This Task is always tested");
+    if (hit.length) take(hit[0], spec.add ? "Mandatory when adding the rating to a CFI" : "This Task is always tested");
   });
 
-  /* 3. at least one from every Area of Operation */
+  /* 3. at least one from every Area of Operation that is part of this test */
   (g.acs || []).forEach(function (a) {
+    if (spec.skip.indexOf(a.roman) >= 0) return;
     if (chosen.some(function (q) { return q.area === a.roman; })) return;
     var hit = shuffle(pool.filter(function (q) { return q.area === a.roman; }), rnd);
     if (hit.length) take(hit[0], "Area " + a.roman + " has to appear");
@@ -6553,15 +6983,15 @@ function mockSelect(g, n, deficient, seed) {
 }
 
 /* ---- the run ------------------------------------------------------------- */
-function mockStart(g, lenId, deficient) {
+function mockStart(g, lenId, deficient, path) {
   var lens = mockLengths(g);
   var L = lens.filter(function (x) { return x.id === lenId; })[0] || lens[1];
   var seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0;
   MOCK = {
     slug: g.slug, doc: g.doc, cert: (guideMeta(g.slug) || {}).cert || g.title,
     seed: seed, len: L.id, started: Date.now(), finished: null, i: 0,
-    deficient: deficient || [],
-    qs: mockSelect(g, L.n, deficient, seed).map(function (q) {
+    deficient: deficient || [], path: mkPathSpec(g, path).path,
+    qs: mockSelect(g, L.n, deficient, seed, path).map(function (q) {
       return Object.assign({}, q, { mark: null, shown: false });
     })
   };
@@ -6604,42 +7034,77 @@ function pageMock() {
   return mockSetup();
 }
 
+/* "How the questions are chosen", for the test picked above it */
+function mkHowHtml(g) {
+  var spec = mkPathSpec(g, MK_PATH), hasKT = !!(g.test);
+  return "<ol class=\"flow\" style=\"margin-top:8px\">" +
+    (hasKT
+      ? (g.is_pts
+          ? "<li>Every subject the applicant <b>missed on the knowledge test</b>. The report lists PLT " +
+            "learning statement codes; each one is matched by wording to the closest Task in this guide. " +
+            "14 CFR 61.39(a)(6)(iii) makes your instructor endorse that you have since shown satisfactory " +
+            "knowledge of those subjects.</li>"
+          : "<li>Every element the applicant <b>missed on the knowledge test</b> — " +
+            esc(g.doc) + " Appendix 1 says the evaluator must cover those. Paste the codes below.</li>")
+      : "") +
+    (spec.add
+      ? "<li><b>Areas " + spec.skip.join(" and ") + " are left out</b> — the add-on table on page 18 of " +
+        esc(g.doc) + " marks them not required for an applicant who holds a flight instructor certificate " +
+        "with an airplane rating.</li>" +
+        "<li>The <b>" + spec.req.length + " Tasks that become mandatory</b> when you add the rating.</li>"
+      : (spec.req.length
+          ? "<li>The <b>" + spec.req.length + " Tasks this document says the evaluator must select</b>.</li>"
+          : "<li>On an initial test there is no short required-Task list, so every Area is fair game.</li>")) +
+    "<li><b>At least one question from every Area of Operation</b>" + (spec.add ? " that is part of this test" : "") + ".</li>" +
+    "<li>The rest at random, spread evenly, written scenarios first.</li>" +
+    "</ol>";
+}
+
 function mockSetup() {
   var g = G, m = guideMeta(g.slug) || {};
   var lens = mockLengths(g);
   var bank = mockBank(g);
   var nScen = bank.filter(function (q) { return q.src === "scenario"; }).length;
-  var req = (g.required && g.required.required) || [];
+  var add = mkAddon(g), step = 0;
 
   var h = '<div class="crumb"><a href="' + here("") + '">' + esc(m.short) +
     "</a> <span>›</span> <span>Mock checkride</span></div>" +
-    '<div class="eyebrow">Practise the oral</div>' +
+    '<div class="eyebrow">Practice the oral</div>' +
     '<h1 style="font-size:clamp(24px,4.4vw,34px);margin-bottom:12px">Mock checkride — ' +
     esc(m.cert) + "</h1>" +
     '<p class="lede">Run it the way an evaluator runs one. Questions are drawn fresh every time, ' +
-    "so it is never the same test twice, and the draw follows the ACS's own rules about what has " +
+    "so it is never the same test twice, and the draw follows the " + (g.is_pts ? "PTS" : "ACS") + "'s own rules about what has " +
     "to be covered. Mark each answer as you go; at the end you get a score out of 100 and a study " +
     "table of everything that was missed.</p>";
 
   var hasKT = !!(g.test);
   h += '<div class="note"><span class="lbl">How the questions are chosen</span>' +
-    "<ol class=\"flow\" style=\"margin-top:8px\">" +
-    (hasKT
-      ? "<li>Every element the applicant <b>missed on the knowledge test</b> — " +
-        esc(g.doc) + " Appendix 1 says the evaluator must cover those. Paste the codes below.</li>"
-      : "") +
-    (req.length
-      ? "<li>The <b>" + req.length + " Tasks this document says the evaluator must select</b>.</li>"
-      : "<li>On an initial test there is no short required-Task list, so every Area is fair game.</li>") +
-    "<li><b>At least one question from every Area of Operation</b>.</li>" +
-    "<li>The rest at random, spread evenly, written scenarios first.</li>" +
-    "</ol></div>";
+    '<div id="mkHow">' + mkHowHtml(g) + "</div></div>";
+
+  /* the CFI-Instrument PTS: adding the rating to a CFI, or an initial certificate */
+  if (add) {
+    h += '<section class="blk"><h2>' + (++step) + ". Which test</h2>" +
+      '<div class="erow mk-path" role="group" aria-label="Which test">' +
+      '<button type="button" class="pill sel' + (MK_PATH !== "initial" ? " on" : "") + '" data-mkpath="addon"' +
+      ' aria-pressed="' + (MK_PATH !== "initial") + '">Adding the rating to my CFI</button>' +
+      '<button type="button" class="pill sel' + (MK_PATH === "initial" ? " on" : "") + '" data-mkpath="initial"' +
+      ' aria-pressed="' + (MK_PATH === "initial") + '">Initial flight instructor certificate</button></div>' +
+      '<p class="muted sm" style="margin-top:10px">Most applicants already hold a flight instructor certificate ' +
+      "with an airplane rating and are adding the instrument rating, so that is the default. The initial " +
+      "test is for someone who does not hold a flight instructor certificate yet.</p></section>";
+  }
 
   if (hasKT) {
-    h += '<section class="blk"><h2>1. The applicant’s knowledge test <span class="hint">' +
-      "Optional, but this is the part an evaluator is obliged to check</span></h2>" +
-      '<p class="lede" style="font-size:15px">Paste the ' + esc(g.test) + ' codes from the Airman ' +
-      "Knowledge Test Report. Each one gets a guaranteed question, labelled so you know why it is there.</p>" +
+    h += '<section class="blk"><h2>' + (++step) + ". The applicant’s knowledge test <span class=\"hint\">" +
+      (g.is_pts ? "Optional — a good use of the areas you missed" : "Optional, but this is the part an evaluator is obliged to check") +
+      "</span></h2>" +
+      (g.is_pts
+        ? '<p class="lede" style="font-size:15px">Paste the <b>PLT codes</b> from the ' + esc(g.test) +
+          " Airman Knowledge Test Report — a test written against a PTS reports learning statement codes " +
+          "such as <span class=\"mono\">PLT215</span>, not element codes. Each one gets a guaranteed question " +
+          "from the Task whose wording is closest, labeled so you know why it is there.</p>"
+        : '<p class="lede" style="font-size:15px">Paste the ' + esc(g.test) + ' codes from the Airman ' +
+          "Knowledge Test Report. Each one gets a guaranteed question, labeled so you know why it is there.</p>") +
       '<textarea id="mkDef" class="codein" rows="3" placeholder="' +
       esc(mockSampleCodes()) + '"></textarea>' +
       '<div class="erow" style="margin-top:9px"><button class="btn ghost sm" id="mkDefSample">' +
@@ -6647,7 +7112,7 @@ function mockSetup() {
       '<span class="muted sm">Leave it empty if the applicant passed clean.</span></div></section>';
   }
 
-  h += '<section class="blk"><h2>' + (hasKT ? "2" : "1") + '. How long</h2><div class="testgrid">' +
+  h += '<section class="blk"><h2>' + (++step) + '. How long</h2><div class="testgrid">' +
     lens.map(function (L) {
       return '<button class="tsel a-' + esc(m.accent || "k") + '" data-mklen="' + L.id + '">' +
         "<b>" + L.n + " questions</b><span>" + esc(L.t) + "</span><i>" + esc(L.d) + "</i></button>";
@@ -6663,6 +7128,7 @@ function mockSetup() {
   return h;
 }
 function mockSampleCodes() {
+  if (G && G.is_pts) return pltExample(3).join(", ");
   var p = codePrefixes()[0] || "PA", fs = flat();
   var out = [];
   for (var i = 0; i < fs.length && out.length < 3; i += Math.max(1, Math.floor(fs.length / 3))) {
@@ -6736,7 +7202,8 @@ function mockResults() {
   h += '<div class="mk-result ' + (pass ? "pass" : "fail") + '">' +
     '<div class="mk-score"><b>' + sc.pct + "</b><span>out of 100</span></div>" +
     "<div><h1>" + (pass ? "Passed the mock" : "Did not meet the standard") + "</h1>" +
-    "<p>" + esc(m.cert) + " · " + sc.done + " of " + sc.total + " questions marked · " +
+    "<p>" + esc(m.cert) + (m.path === "addon" ? " (adding the rating to a CFI)" : "") +
+    " · " + sc.done + " of " + sc.total + " questions marked · " +
     mins + " minutes · 70 is the pass mark</p></div></div>";
 
   h += '<div class="note ' + (pass ? "" : "flag") + '"><span class="lbl">What this score means</span>' +
@@ -6744,7 +7211,7 @@ function mockResults() {
       ? "On this sample, on this day, the applicant covered enough. That is worth something — " +
         "but a real evaluator picks different questions, asks follow-ups, and watches how the " +
         "applicant thinks, not just what they know. <b>Treat a pass here as permission to keep " +
-        "practising, not as a prediction.</b>"
+        "practicing, not as a prediction.</b>"
       : "That is what practice is for. Nothing here goes on any record. Work through the study " +
         "table below, then run it again — the questions will be different.") +
     (m.deficient && m.deficient.length
@@ -6789,7 +7256,7 @@ function mockResults() {
     missed.length + " question" + (missed.length === 1 ? "" : "s") +
     " missed or partly answered</span></h2>" +
     '<div class="tablewrap"><table class="studytable" id="mkTable"><thead><tr>' +
-    "<th>Code</th><th>What the ACS says</th><th>Where to study it</th></tr></thead><tbody>";
+    "<th>Code</th><th>What the " + STD() + " says</th><th>Where to study it</th></tr></thead><tbody>";
   missed.forEach(function (q) {
     var refs = refsFor(taskOf(q.code) || {});
     var elText = q.els.map(function (c) {
@@ -6799,7 +7266,7 @@ function mockResults() {
     h += '<tr><td class="mono nw" data-l="Code">' +
       elText.map(function (e) { return esc(e.code); }).join("<br>") +
       '<div class="mk-mk ' + q.mark + '">' + (q.mark === "no" ? "missed" : "partly") + "</div></td>" +
-      '<td data-l="What the ACS says"><b>' + esc(q.code + " " + q.task) + "</b>" +
+      '<td data-l="What the ' + STD() + ' says"><b>' + esc(q.code + " " + q.task) + "</b>" +
       elText.map(function (e) {
         return e.text ? "<br>" + esc(e.text) : ""; }).join("") +
       '<div class="mk-qq">Asked: ' + esc(q.q) + "</div></td>" +
@@ -6811,8 +7278,11 @@ function mockResults() {
       "</td></tr>";
   });
   h += "</tbody></table></div>" +
-    '<p class="v-note">Every code above is the FAA’s own, and the wording beside it is quoted ' +
-    "from " + esc(m.doc) + ". Take this table to the next lesson.</p></section>";
+    '<p class="v-note">' + (G && G.is_pts
+      ? "The codes above are this site’s own numbering of the PTS elements — a PTS has no element codes " +
+        "of its own — and the wording beside them is quoted from " + esc(m.doc) + "."
+      : "Every code above is the FAA’s own, and the wording beside it is quoted from " + esc(m.doc) + ".") +
+    " Take this table to the next lesson.</p></section>";
   return h;
 }
 
@@ -6833,10 +7303,22 @@ function wireMock() {
   host.addEventListener("click", function (e) {
     var t = e.target;
 
+    var pth = t.closest("[data-mkpath]");
+    if (pth) {
+      MK_PATH = pth.getAttribute("data-mkpath");
+      var ps = host.querySelectorAll("[data-mkpath]");
+      for (var pi = 0; pi < ps.length; pi++) {
+        var onp = ps[pi] === pth;
+        ps[pi].classList.toggle("on", onp);
+        ps[pi].setAttribute("aria-pressed", onp ? "true" : "false");
+      }
+      if (el("mkHow")) el("mkHow").innerHTML = mkHowHtml(G);
+      return;
+    }
     var len = t.closest("[data-mklen]");
     if (len) {
       var raw = (el("mkDef") || {}).value || "";
-      mockStart(G, len.getAttribute("data-mklen"), parseCodes(raw));
+      mockStart(G, len.getAttribute("data-mklen"), parseMissed(raw), MK_PATH);
       redrawMock();
       return;
     }
@@ -6905,6 +7387,18 @@ function redrawMock() {
   n.innerHTML = pageMock() + footer();
   window.scrollTo(0, 0);
 }
+/* What was missed on the knowledge test. A PTS report prints PLT learning
+   statement codes, so on a PTS guide those are read too (PLT 097, P097, 097). */
+function parseMissed(raw) {
+  var out = parseCodes(raw);
+  if (G && G.is_pts) {
+    codeTokens(raw).forEach(function (tk) {
+      var c = normPlt(tk);
+      if (c && out.indexOf(c) < 0) out.push(c);
+    });
+  }
+  return out;
+}
 /* "PA.I.A.K1, PA.I.B.K3" or a whole pasted test report - pull out the codes */
 function parseCodes(raw) {
   var out = [], seen = {};
@@ -6924,7 +7418,7 @@ function parseCodes(raw) {
   /* =============== mock checkride picker =============== */
   function pageMockPicker() {
     var h = '<div class="crumb"><a href="#/">All guides</a> <span>›</span> <span>Mock checkrides</span></div>' +
-      '<div class="eyebrow">Practise the oral</div>' +
+      '<div class="eyebrow">Practice the oral</div>' +
       '<h1 style="font-size:clamp(26px,4.6vw,36px);margin-bottom:12px">Mock checkrides</h1>' +
       '<p class="lede">Run a practice oral the way an evaluator would. Scenario questions drawn fresh ' +
       "each time so it is never the same test twice, marked as you go, scored out of 100, and at the " +
@@ -7049,7 +7543,7 @@ function parseCodes(raw) {
         "The commas separate requirements and the <b>or</b> is a choice inside one of them. " +
         'That cell means <b>three</b> Tasks: <b>A or B</b>, then <b>C or D</b>, then <b>E</b>. ' +
         "The evaluator picks which side of each <i>or</i> you fly, so be ready for both — " +
-        "turning up having practised only the chandelle is how an applicant discovers the " +
+        "turning up having practiced only the chandelle is how an applicant discovers the " +
         "evaluator wanted the lazy eight.</div>";
     }
     return h + "</section>";
@@ -7113,7 +7607,7 @@ function parseCodes(raw) {
       d: "Type the codes off an Airman Knowledge Test Report and get a table you can paste straight into a document: the code, what the FAA says it covers, and where to study it." },
     { href: "#/mock",      icon: "badge",  t: "Mock checkrides",
       d: "Run a practice oral as the evaluator. Scenario questions drawn fresh each time, scored out of 100, and it hands back a study list of everything that was missed." },
-    { href: "#/tools",     icon: "calc",   t: "Useful resources",
+    { href: "#/tools",     icon: "calc",   t: "All tools",
       d: "An E6B that runs in the page, the formulas worth knowing, a printable nav log, and a METAR, TAF and PIREP decoder." },
     { href: "#/resources", icon: "link",   t: "Official resources",
       d: "The handbooks, advisory circulars and regulations themselves — every link checked." }
@@ -7124,13 +7618,13 @@ function parseCodes(raw) {
       '<div class="hero-in">' +
       '<div class="eyebrow">Airman Certification Standards &middot; Part 61 &middot; Airplane</div>' +
       "<h1>Every checkride, one place.</h1>" +
-      '<p class="lede">Pick the certificate you are working on. Every task, every Knowledge, Risk ' +
-      "Management and Skills element quoted from the ACS itself, with the FAA reference beside it " +
+      '<p class="lede">Pick the certificate you are working on. Every task and every element quoted ' +
+      "word for word from the FAA's own standard, the ACS or the PTS, with the FAA reference beside it " +
       "and the tools to actually study from.</p>" +
       '<div class="hero-stats">' +
       statCard(GUIDES.length, "study guides") +
       statCard(GUIDES.reduce(function (a, g) { return a + g.tasks; }, 0), "tasks") +
-      statCard(GUIDES.reduce(function (a, g) { return a + g.elements; }, 0).toLocaleString(), "ACS elements") +
+      statCard(GUIDES.reduce(function (a, g) { return a + g.elements; }, 0).toLocaleString(), "ACS and PTS elements") +
       "</div></div></section>";
 
     h += '<h2 class="sect">Choose your guide</h2>' +
@@ -7144,6 +7638,8 @@ function parseCodes(raw) {
           "<div><h3>" + esc(t.t) + "</h3><p>" + esc(t.d) + "</p></div>" +
           '<span class="go" aria-hidden="true">' + I.chev + "</span></a>";
       }).join("") + "</div>";
+
+    h += '<h2 class="sect">The book</h2>' + bookCard();
 
     h += '<div class="note flag" style="margin-top:34px"><span class="lbl">' +
       "What this is, and what it is not</span>" +
@@ -7176,8 +7672,8 @@ function parseCodes(raw) {
   function objectives(scopeLine) {
     var h = '<section class="obj"><h2 class="sect">Why this exists</h2>' +
       '<p class="ob-why">' + (scopeLine ||
-        "I am a CFI applicant. I built this because it is what I wish somebody had handed me when " +
-        "I started, and because I think building it is part of taking the job seriously. " +
+        "I started building this as a CFI applicant, because it is what I wish somebody had handed me " +
+        "when I started, and because I think building it is part of taking the job seriously. " +
         "Nobody asked for it. It is free, and it always will be.") + "</p>" +
       '<div class="ob-grid">' + OBJECTIVES.map(function (o) {
         return '<div class="obcard"><span class="ob-n mono">' + o.n + "</span>" +
@@ -7233,20 +7729,30 @@ function parseCodes(raw) {
         "<b>They are not FAA ACS codes.</b> The knowledge test for this rating reports " +
         "<b>PLT learning statement codes</b> instead.</div>";
     }
-    if (req.required && req.required.length) {
+    var add = addonSpec();
+    var excludedHtml = (req.excluded && req.excluded.length ?
+      '<div class="sh">Not tested in a single-engine airplane</div><div class="reqrow">' +
+      req.excluded.map(function (c) { return '<span class="chip">' + esc(c) + "</span>"; }).join("") +
+      "</div>" + (req.excluded_why ? '<p class="v-note">' + esc(req.excluded_why) + "</p>" : "") : "");
+    if (add) {
+      /* CFI-Instrument: two tests in one PTS - say which list is which */
+      h += '<div class="note"><span class="lbl">Tasks the evaluator must select</span>' +
+        "<b>Adding the instrument rating to your CFI</b> — you already hold a flight instructor " +
+        "certificate with an airplane rating, which is most applicants. Areas " +
+        esc((add.not_required_areas || []).join(" and ")) + " are not required, and these " +
+        add.required.length + " Tasks are mandatory:" + reqChips(add.required, function (c) {
+          return (add.why || {})[c] || ""; }) +
+        '<p class="v-note">' + esc(add.source || G.doc) + ". The rest of each Area is selected under " +
+        "that Area's own note.</p>" +
+        '<div class="sh">Initial flight instructor instrument certificate</div>' +
+        "If you do not hold a flight instructor certificate yet, the Area notes apply as written, and " +
+        "these " + req.required.length + " are guaranteed:" + reqChips(req.required, mustWhy) +
+        excludedHtml + "</div>";
+    } else if (req.required && req.required.length) {
       h += '<div class="note"><span class="lbl">Tasks the evaluator must select</span>' +
         "These " + req.required.length + " are guaranteed to be on the test. " +
-        "Everything else is selected at the evaluator's discretion.<br><br>" +
-        '<div class="reqrow">' + req.required.map(function (c) {
-          var t = taskOf(c);
-          return '<a class="chip flag" href="' + here("t/" + c) + '" title="' +
-            esc(mustWhy(c)) + '">' + esc(c) + (t ? " · " + esc(t.title) : "") + "</a>";
-        }).join("") + "</div>" +
-        (req.excluded && req.excluded.length ?
-          '<div class="sh">Not tested in a single-engine airplane</div><div class="reqrow">' +
-          req.excluded.map(function (c) { return '<span class="chip">' + esc(c) + "</span>"; }).join("") +
-          "</div>" + (req.excluded_why ? '<p class="v-note">' + esc(req.excluded_why) + "</p>" : "") : "") +
-        "</div>";
+        "Everything else is selected at the evaluator's discretion." +
+        reqChips(req.required, mustWhy) + excludedHtml + "</div>";
     } else if (req.note) {
       h += '<div class="note"><span class="lbl">How the evaluator picks Tasks</span>' + fmt(req.note) + "</div>";
     }
@@ -7339,7 +7845,7 @@ function parseCodes(raw) {
       d: "All 56, letter by letter, with the handbook page for every word." });
     if (ENDO.length) out.push({ href: here("endorsements"), icon: "sign", t: "Sample endorsements",
       d: ENDO.length + " endorsements quoted from AC 61-65K, plus the cheat sheet." });
-    out.push({ href: "#/tools", icon: "calc", t: "Useful resources",
+    out.push({ href: "#/tools", icon: "calc", t: "All tools",
       d: "E6B, formulas, nav log and the weather decoder — shared across every guide." });
     return out;
   }
@@ -7401,7 +7907,7 @@ function parseCodes(raw) {
     }
     else if (parts[0] === "codes") { h = pageCodesGlobal(parts[1]); title = "Missed-code study table — ACS Reference"; }
     else if (parts[0] === "mock") { h = pageMockPicker(); title = "Mock checkrides — ACS Reference"; }
-    else if (parts[0] === "tools") { h = pageTools(); title = "Useful resources — ACS Reference"; }
+    else if (parts[0] === "tools") { h = pageTools(); title = "All tools — ACS Reference"; }
     else if (parts[0] === "formulas") { h = pageFormulas(); title = "Formulas — ACS Reference"; }
     else if (parts[0] === "navlog") { h = pageNavlog(); title = "Navigation log — ACS Reference"; }
     else if (parts[0] === "fplan") { h = pageFplan(); title = "ICAO flight plan — ACS Reference"; }
@@ -7608,6 +8114,8 @@ function parseCodes(raw) {
       'that matters against the <a href="#/resources">official resources</a> before you rely on it. ' +
       'Spotted a mistake? <a href="#/contact">Tell me about it</a> — it gets fixed and you get a thank you.<br><br>' +
       'Built for student pilots and instructors. <a href="#/about">About this site</a>. ' +
+      'The book: <a href="' + BOOK.url + '" target="_blank" rel="noopener"><i>' + esc(BOOK.title) + "</i></a>" +
+      '<span class="sr"> (opens Amazon in a new tab)</span>. ' +
       "Not affiliated with, or endorsed by, the Federal Aviation Administration.</div>";
     return h;
   }
@@ -7836,8 +8344,28 @@ function parseCodes(raw) {
     wireLb();
     route();                 /* route() builds the rail for whatever context it lands in */
     window.addEventListener("hashchange", route);
+    /* the E6B and the figure viewer are overlays: leaving the page - the back
+       button on a phone, above all - closes them rather than leaving them
+       floating over the next page */
+    window.addEventListener("hashchange", function () { closeE6B(); closeLb(); });
 
-    el("menuBtn").addEventListener("click", function () { document.body.classList.toggle("nav"); });
+    el("menuBtn").addEventListener("click", function () {
+      document.body.classList.toggle("nav");
+      /* On a phone the drawer used to open at the top, with the current Task
+         about 1,400 px further down under every tool link. Scroll it to you. */
+      if (document.body.classList.contains("nav")) {
+        var r = el("rail"), a = r && r.querySelector("a.on");
+        if (a) r.scrollTop = Math.max(0, a.offsetTop - Math.round(r.clientHeight * 0.35));
+      }
+    });
+    /* rail actions that are not pages: the E6B opens over whatever you are reading */
+    el("rail").addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a[data-act]");
+      if (!a) return;
+      e.preventDefault();
+      document.body.classList.remove("nav");
+      if (a.getAttribute("data-act") === "e6b") openE6B();
+    });
     el("scrim").addEventListener("click", function () { document.body.classList.remove("nav"); });
 
     var si = el("q");
