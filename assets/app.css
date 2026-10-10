@@ -2672,8 +2672,9 @@ html.wc-on, body.wc-on{ overflow:hidden; touch-action:none }
 .rail a.ext::after{content:"\2197"; margin-left:auto; padding-left:8px; font-size:12px; opacity:.55}
 
 /* ===========================================================================
-   The book - Fly by the Letters. One card on the portal, the About page and
-   the FOI mnemonics page.
+   The books - Fly by the Letters and Teach by the Board. One card per book:
+   both on the portal and the About page, Fly by the Letters on the FOI
+   mnemonics page, Teach by the Board on the CFI guide's front page.
    =========================================================================== */
 .book{
   display:grid; grid-template-columns:132px minmax(0,1fr); gap:22px; align-items:start;

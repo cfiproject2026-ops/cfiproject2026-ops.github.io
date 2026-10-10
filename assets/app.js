@@ -734,33 +734,53 @@
   function railLink(href, nav, icon, label) {
     return '<a href="' + href + '" data-nav="' + nav + '">' + icon + esc(label) + "</a>";
   }
-  /* Fly by the Letters - Simon's book (CFI Project 2026). The clean product
-     URL: the link he shared carried Amazon share/tracking parameters. */
+  /* Simon's books (CFI Project 2026). Clean product URLs: the links he shared
+     carried Amazon share/tracking parameters.                                */
   var BOOK = { url: "https://www.amazon.com/dp/B0HKQ1HTTK",
                title: "Fly by the Letters",
                sub: "Aviation Acronyms & Memory Aids for Student Pilots",
+               img: "book-cover",
                blurb: "99 memory aids pilots actually use \u2014 IMSAFE, PAVE, ARROW, GRABCARDD and the " +
                       "rest \u2014 taken apart letter by letter in plain language, each one with the " +
-                      "regulation, AIM paragraph or handbook page it comes from." };
-  /* One card for the book, used on the portal, the About page and the FOI
-     mnemonics page. No price on purpose: prices change, and the store page is
-     the one place that is always right about them.                          */
+                      "regulation, AIM paragraph or handbook page it comes from.",
+               note: "An independent study aid, not an FAA publication. Like this site, it names " +
+                     "the FAA source for every fact so you can check it." };
+  var BOOK2 = { url: "https://www.amazon.com/dp/B0HMJY6HP6",
+                title: "Teach by the Board",
+                sub: "Whiteboard Lessons for Every Flight Instructor ACS Task",
+                img: "book-board",
+                blurb: "A whiteboard lesson for every one of the 69 Airplane Single-Engine Land Tasks in " +
+                       "the flight instructor ACS (FAA-S-ACS-25): the board planned in four marker colors " +
+                       "and numbered in drawing order, then how to teach it \u2014 Draw \u00b7 Say \u00b7 " +
+                       "Ask steps, questions with answers, common errors, risk management and the standard.",
+                note: "An independent teaching aid, not an FAA publication. Like this site, it names " +
+                      "the FAA sources on every page so you can check them." };
+  var BOOKS = [BOOK, BOOK2];
+  /* One card per book. Both books are on the portal and the About page; Fly by
+     the Letters is also on the FOI mnemonics page, Teach by the Board on the
+     CFI guide's front page. No price on purpose: prices change, and the store
+     page is the one place that is always right about them.                   */
   /* `eyebrow` is for a page with no "The book" heading of its own above the card */
-  function bookCard(lead, eyebrow) {
-    return '<aside class="book" aria-label="The book: ' + esc(BOOK.title) + '">' +
-      '<a class="book-cv" href="' + BOOK.url + '" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">' +
-      '<img src="img/book-cover-160.webp" srcset="img/book-cover-160.webp 160w, img/book-cover-320.webp 320w, ' +
-      'img/book-cover-480.webp 480w" sizes="(max-width:560px) 96px, 132px" width="160" height="256" ' +
+  function bookCard(lead, eyebrow, b) {
+    b = b || BOOK;
+    var cv = "img/" + b.img + "-";
+    return '<aside class="book" aria-label="The book: ' + esc(b.title) + '">' +
+      '<a class="book-cv" href="' + b.url + '" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">' +
+      '<img src="' + cv + '160.webp" srcset="' + cv + "160.webp 160w, " + cv + "320.webp 320w, " +
+      cv + '480.webp 480w" sizes="(max-width:560px) 96px, 132px" width="160" height="256" ' +
       'alt="" loading="lazy" decoding="async"></a>' +
       '<div class="book-tx">' + (eyebrow ? '<span class="book-eb">The book</span>' : "") +
-      "<h3>" + esc(BOOK.title) + "</h3>" +
-      '<div class="book-sub">' + esc(BOOK.sub) + "</div>" +
-      "<p>" + (lead || esc(BOOK.blurb)) + "</p>" +
-      '<div class="book-go"><a class="btn sm" href="' + BOOK.url + '" target="_blank" rel="noopener">' +
+      "<h3>" + esc(b.title) + "</h3>" +
+      '<div class="book-sub">' + esc(b.sub) + "</div>" +
+      "<p>" + (lead || esc(b.blurb)) + "</p>" +
+      '<div class="book-go"><a class="btn sm" href="' + b.url + '" target="_blank" rel="noopener">' +
       I.bookopen + 'See it on Amazon<span class="sr"> (opens in a new tab)</span></a>' +
       '<span class="book-fmt">Kindle and paperback &middot; by CFI Project 2026</span></div>' +
-      '<p class="book-note">An independent study aid, not an FAA publication. Like this site, it names ' +
-      "the FAA source for every fact so you can check it.</p></div></aside>";
+      '<p class="book-note">' + esc(b.note) + "</p></div></aside>";
+  }
+  /* both books, one card each, in the order they were published */
+  function booksBlock() {
+    return BOOKS.map(function (b) { return bookCard(null, false, b); }).join("");
   }
   function railExt(href, icon, label) {
     return '<a href="' + href + '" target="_blank" rel="noopener" class="ext">' + icon + esc(label) +
@@ -791,7 +811,7 @@
       railLink(u("resources"), n("/resources"), I.link, "Official FAA resources") +
       railLink(u("about"), n("/about"), I.user, "About") +
       railLink(u("contact"), n("/contact"), I.mail, "Found something wrong?") +
-      railExt(BOOK.url, I.bookopen, "The book: " + BOOK.title) +
+      BOOKS.map(function (b) { return railExt(b.url, I.bookopen, "Book: " + b.title); }).join("") +
       "</div>";
   }
   function buildRail() {
@@ -6025,8 +6045,9 @@ function wxDecode(raw, force) {
       "Head down, one rating at a time.</li>" +
       "<li><b>CFI and CFII, September 2026.</b> The flight instructor certificate, then the instrument " +
       "instructor rating on it. This site started as my own CFI study guide and grew with every checkride.</li>" +
-      "<li><b>A book, September 2026.</b> <i>Fly by the Letters</i>: the memory aids pilots use, explained " +
-      "letter by letter. More about it below.</li>" +
+      "<li><b>Two books, 2026.</b> <i>Fly by the Letters</i>: the memory aids pilots use, explained " +
+      "letter by letter. <i>Teach by the Board</i>: a whiteboard lesson for every flight instructor ACS " +
+      "Task. More about both below.</li>" +
       "</ol></section>";
 
     h += '<section class="blk"><h2>The extra pieces</h2>' +
@@ -6047,7 +6068,7 @@ function wxDecode(raw, force) {
       "separate somebody who passed a checkride from somebody you would actually want teaching your kid to " +
       "fly, and building this was how I proved that to myself. If it also helps you, even better.</p></section>";
 
-    h += '<section class="blk"><h2>The book</h2>' + bookCard() + "</section>";
+    h += '<section class="blk"><h2>The books</h2>' + booksBlock() + "</section>";
 
     h += '<div class="note gold" style="margin-top:26px"><span class="lbl">Where this is going</span>' +
       "IVAO gave me sixteen years of confidence in this before I was old enough to do anything about it. " +
@@ -7639,7 +7660,7 @@ function parseCodes(raw) {
           '<span class="go" aria-hidden="true">' + I.chev + "</span></a>";
       }).join("") + "</div>";
 
-    h += '<h2 class="sect">The book</h2>' + bookCard();
+    h += '<h2 class="sect">The books</h2>' + booksBlock();
 
     h += '<div class="note flag" style="margin-top:34px"><span class="lbl">' +
       "What this is, and what it is not</span>" +
@@ -7774,6 +7795,16 @@ function parseCodes(raw) {
           "<div><h3>" + esc(t.t) + "</h3><p>" + esc(t.d) + "</p></div>" +
           '<span class="go" aria-hidden="true">' + I.chev + "</span></a>";
       }).join("") + "</div>";
+
+    /* Teach by the Board is the whiteboard version of this exact guide: the
+       same 69 single-engine land Tasks of FAA-S-ACS-25. */
+    if (g.slug === "cfi") {
+      h += '<h2 class="sect">The book for this guide</h2>' + bookCard(
+        "Every Task in this guide is a whiteboard lesson in the book: the board planned in four marker " +
+        "colors and numbered in drawing order, then how to teach it \u2014 Draw \u00b7 Say \u00b7 Ask " +
+        "steps, questions with answers, common errors and the standard. The 69 Tasks follow the order a " +
+        "student learns them, and an ACS Finder takes you to any Task by its code.", false, BOOK2);
+    }
 
     h += objectives(
       "This guide covers <b>" + esc(m.cert || g.title) + "</b> against " + esc(g.doc) +
@@ -7913,7 +7944,9 @@ function parseCodes(raw) {
     else if (parts[0] === "fplan") { h = pageFplan(); title = "ICAO flight plan — ACS Reference"; }
     else if (parts[0] === "holding") { h = pageInstr("hold"); title = "Holding entries — ACS Reference"; }
     else if (parts[0] === "cdi") { h = pageInstr("cdi"); title = "CDI and HSI — ACS Reference"; }
-    else if (parts[0] === "ipc") { h = pageIpc(); title = "Instrument proficiency check — ACS Reference"; }
+    /* the IPC page belongs to the Instrument guide; typed at site level it had
+       no guide loaded and stopped with an error, so send it there */
+    else if (parts[0] === "ipc") { location.replace("#/g/instrument/ipc"); return; }
     else if (parts[0] === "wx") { h = pageWx(); title = "Weather decoder — ACS Reference"; }
     else if (parts[0] === "endorsements") { h = pageEndorsements(parts[1]); title = "Sample endorsements — ACS Reference"; }
     else if (parts[0] === "presolo") { h = pagePresolo(); title = "Pre-solo written exam — ACS Reference"; }
@@ -8114,8 +8147,10 @@ function parseCodes(raw) {
       'that matters against the <a href="#/resources">official resources</a> before you rely on it. ' +
       'Spotted a mistake? <a href="#/contact">Tell me about it</a> — it gets fixed and you get a thank you.<br><br>' +
       'Built for student pilots and instructors. <a href="#/about">About this site</a>. ' +
-      'The book: <a href="' + BOOK.url + '" target="_blank" rel="noopener"><i>' + esc(BOOK.title) + "</i></a>" +
-      '<span class="sr"> (opens Amazon in a new tab)</span>. ' +
+      "The books: " + BOOKS.map(function (b) {
+        return '<a href="' + b.url + '" target="_blank" rel="noopener"><i>' + esc(b.title) + "</i></a>" +
+          '<span class="sr"> (opens Amazon in a new tab)</span>';
+      }).join(" and ") + ". " +
       "Not affiliated with, or endorsed by, the Federal Aviation Administration.</div>";
     return h;
   }
